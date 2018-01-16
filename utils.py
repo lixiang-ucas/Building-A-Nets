@@ -91,7 +91,7 @@ def compute_class_accuracies(y_pred, y_true, num_classes=12):
     for val in range(num_classes):
         total.append((flat_image == val).sum())
 
-    count = [0.0] * 12
+    count = [0.0] * num_classes
     for i in range(w):
         for j in range(h):
             if y_pred[i, j] == y_true[i, j]:
