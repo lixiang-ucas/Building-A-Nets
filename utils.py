@@ -111,15 +111,15 @@ def compute_class_accuracies(y_pred, y_true, num_classes=12):
 
 # Compute precision
 def precision(pred, label):
-    TP = np.float(np.count_nonzero(pred * label))
-    FP = np.float(np.count_nonzero(pred * (label - 1)))
+    TP = np.float(np.count_nonzero(pred * label)) + 1.0
+    FP = np.float(np.count_nonzero(pred * (label - 1))) + 1.0
     prec = TP / (TP + FP)
     return prec
 
 # Compute recall
 def recall(pred, label):
-    TP = np.float(np.count_nonzero(pred * label))
-    FN = np.float(np.count_nonzero((pred - 1) * label))
+    TP = np.float(np.count_nonzero(pred * label)) + 1.0
+    FN = np.float(np.count_nonzero((pred - 1) * label)) + 1.0
     rec = TP / (TP + FN)
     return rec
 

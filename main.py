@@ -18,6 +18,7 @@ from FC_DenseNet_Tiramisu import build_fc_densenet
 from Encoder_Decoder import build_encoder_decoder
 from Encoder_Decoder_Skip import build_encoder_decoder_skip
 from RefineNet import build_refinenet
+from HF_FCN import build_hf_fcn
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -40,7 +41,8 @@ parser.add_argument('--h_flip', type=str2bool, default=False, help='Whether to r
 parser.add_argument('--v_flip', type=str2bool, default=False, help='Whether to randomly flip the image vertically for data augmentation')
 parser.add_argument('--brightness', type=str2bool, default=False, help='Whether to randomly change the image brightness for data augmentation')
 parser.add_argument('--model', type=str, default="FC-DenseNet103", help='The model you are using. Currently supports:\
-    FC-DenseNet56, FC-DenseNet67, FC-DenseNet103, Encoder-Decoder, Encoder-Decoder-Skip, RefineNet-Res101, RefineNet-Res152, custom')
+    FC-DenseNet56, FC-DenseNet67, FC-DenseNet103, FC-DenseNet158, Encoder-Decoder, Encoder-Decoder-Skip, RefineNet-Res101, RefineNet-Res152, HF-FCN, custom')
+parser.add_argument('--gpu', type=int, default=0, help='Gpu device to use')
 args = parser.parse_args()
 
 
@@ -74,9 +76,9 @@ def prepare_data(dataset_dir=args.dataset):
 
 
 # Check if model is available
-AVAILABLE_MODELS = ["FC-DenseNet56", "FC-DenseNet67", "FC-DenseNet103", 
+AVAILABLE_MODELS = ["FC-DenseNet56", "FC-DenseNet67", "FC-DenseNet103", "FC-DenseNet158", 
                     "Encoder-Decoder", "Encoder-Decoder-Skip", 
-                    "RefineNet-Res101", "RefineNet-Res152", "custom"]
+                    "RefineNet-Res101", "RefineNet-Res152", "HF-FCN", "custom"]
 if args.model not in AVAILABLE_MODELS:
     print("Error: given model is not available. Try these:")
     print(AVAILABLE_MODELS)
@@ -102,24 +104,27 @@ print("Preparing the model ...")
 input = tf.placeholder(tf.float32,shape=[None,None,None,3])
 output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
 
-network = None
-if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103":
-    network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes)
-elif args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
-    network = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
-elif args.model == "Encoder-Decoder":
-    network = build_encoder_decoder(input, num_classes)
-elif args.model == "Encoder-Decoder-Skip":
-    network = build_encoder_decoder_skip(input, num_classes)
-elif args.model == "custom":
-    network = build_custom(input, num_classes)
+with tf.device('/gpu:'+str(args.gpu)):
+    input = tf.placeholder(tf.float32,shape=[None,None,None,3])
+    output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
 
+    if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158":
+        network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes)
+    elif args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
+        network = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
+    elif args.model == "Encoder-Decoder":
+        network = build_encoder_decoder(input, num_classes)
+    elif args.model == "Encoder-Decoder-Skip":
+        network = build_encoder_decoder_skip(input, num_classes)
+    elif args.model == "HF-FCN":
+        network = build_hf_fcn(input, preset_model ='FC-DenseNet103', num_classes=num_classes)
+    elif args.model == "custom":
+        network = build_custom(input, num_classes)
 
-# Compute your (unweighted) softmax cross entropy loss
-loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+    # Compute your (unweighted) softmax cross entropy loss
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
 
-opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
-
+    opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 sess=tf.Session(config=config)
@@ -129,7 +134,7 @@ sess.run(tf.global_variables_initializer())
 
 utils.count_params()
 
-model_checkpoint_name = "checkpoints/latest_model_" + args.model + "_" + args.dataset + ".ckpt"
+model_checkpoint_name = "checkpoints/latest_model.ckpt" #_" + args.model + "_" + args.dataset + "
 if args.continue_training or not args.is_training:
     print('Loaded latest model checkpoint')
     saver.restore(sess, model_checkpoint_name)
@@ -158,7 +163,7 @@ if args.is_training:
         id_list = np.random.permutation(len(train_input_names))
         num_iters = int(np.floor(len(id_list) / args.batch_size))
 
-        for i in range(num_iters):
+        for i in range(num_iters)[:100]:
             st=time.time()
             
             input_image_batch = []
