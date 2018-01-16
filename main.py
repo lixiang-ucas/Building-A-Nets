@@ -43,6 +43,7 @@ parser.add_argument('--brightness', type=str2bool, default=False, help='Whether 
 parser.add_argument('--model', type=str, default="FC-DenseNet103", help='The model you are using. Currently supports:\
     FC-DenseNet56, FC-DenseNet67, FC-DenseNet103, FC-DenseNet158, Encoder-Decoder, Encoder-Decoder-Skip, RefineNet-Res101, RefineNet-Res152, HF-FCN, custom')
 parser.add_argument('--gpu', type=int, default=0, help='Gpu device to use')
+parse.add_argument('--balanced_weight', type=str2bool, default=False, help='whegher to use balanced weight')
 args = parser.parse_args()
 
 
@@ -88,7 +89,7 @@ if args.model not in AVAILABLE_MODELS:
 # Load the data
 print("Loading the data ...")
 train_input_names,train_output_names, val_input_names, val_output_names, test_input_names, test_output_names = prepare_data()
-
+balanced_weight = utils.median_frequency_balancing(dataset_dir + "/train_labels/")
 
 class_names_list = helpers.get_class_list(os.path.join(args.dataset, "class_list.txt"))
 class_names_string = ""
@@ -122,7 +123,10 @@ with tf.device('/gpu:'+str(args.gpu)):
         network = build_custom(input, num_classes)
 
     # Compute your (unweighted) softmax cross entropy loss
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+    if not balanced_weight:
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+    else 
+        loss = balanced_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)
 
     opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
 config = tf.ConfigProto()
@@ -163,7 +167,7 @@ if args.is_training:
         id_list = np.random.permutation(len(train_input_names))
         num_iters = int(np.floor(len(id_list) / args.batch_size))
 
-        for i in range(num_iters)[:100]:
+        for i in range(num_iters)[:1000]:
             st=time.time()
             
             input_image_batch = []
@@ -263,7 +267,7 @@ if args.is_training:
             out_vis_image = helpers.colour_code_segmentation(output_image)
 
             accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
-            class_accuracies = utils.compute_class_accuracies(out_eval_image, gt)
+            class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes)
             prec = utils.precision(out_eval_image, gt)
             rec = utils.recall(out_eval_image, gt)
             f1 = utils.f1score(out_eval_image, gt)
@@ -412,5 +416,4 @@ else:
     print("Average recall = ", avg_recall)
     print("Average F1 score = ", avg_f1)
     print("Average mean IoU score = ", avg_iou)
-
 
