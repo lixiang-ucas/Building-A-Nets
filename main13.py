@@ -8,8 +8,8 @@ import argparse
 import random
 import os, sys
 
-import helpers
-import utils
+import helpers 
+import utils 
 
 import matplotlib.pyplot as plt
 
@@ -100,8 +100,7 @@ for class_name in class_names_list:
     else:
         class_names_string = class_names_string + class_name
 
-# num_classes = len(class_names_list)
-num_classes = 1
+num_classes = len(class_names_list)
 
 print("Preparing the model ...")
 input = tf.placeholder(tf.float32,shape=[None,None,None,3])
@@ -126,10 +125,10 @@ with tf.device('/gpu:'+str(args.gpu)):
 
     # Compute your (unweighted) softmax cross entropy loss
     if not args.balanced_weight:
-        loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=network, labels=output))
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
     else:
         loss = args.balanced_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)
-
+        
     opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -201,9 +200,8 @@ if args.is_training:
 
                 # Prep the data. Make sure the labels are in one-hot format
                 input_image = np.float32(input_image) / 255.0
-                # output_image = np.float32(helpers.one_hot_it(label=output_image, num_classes=num_classes))
-                output_image = np.float32(output_image[:,:, np.newaxis])
-
+                output_image = np.float32(helpers.one_hot_it(label=output_image, num_classes=num_classes))
+                
                 input_image_batch.append(np.expand_dims(input_image, axis=0))
                 output_image_batch.append(np.expand_dims(output_image, axis=0))
 
@@ -265,13 +263,12 @@ if args.is_training:
             
 
             output_image = np.array(output_image[0,:,:,:])
-            # output_image = helpers.reverse_one_hot(output_image)
-            output_image = output_image>0.5
+            output_image = helpers.reverse_one_hot(output_image)
             out_eval_image = output_image[:,:,0]
             out_vis_image = helpers.colour_code_segmentation(output_image)
 
             accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
-            class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes+1)
+            class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes)
             prec = utils.precision(out_eval_image, gt)
             rec = utils.recall(out_eval_image, gt)
             f1 = utils.f1score(out_eval_image, gt)

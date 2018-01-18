@@ -42,8 +42,11 @@ parser.add_argument('--v_flip', type=str2bool, default=False, help='Whether to r
 parser.add_argument('--brightness', type=str2bool, default=False, help='Whether to randomly change the image brightness for data augmentation')
 parser.add_argument('--model', type=str, default="FC-DenseNet103", help='The model you are using. Currently supports:\
     FC-DenseNet56, FC-DenseNet67, FC-DenseNet103, FC-DenseNet158, Encoder-Decoder, Encoder-Decoder-Skip, RefineNet-Res101, RefineNet-Res152, HF-FCN, custom')
-parser.add_argument('--gpu', type=int, default=0, help='Gpu device to use')
+parser.add_argument('--gpu', type=int, default=0, help='Set GPU device id')
 parser.add_argument('--balanced_weight', type=str2bool, default=False, help='whegher to use balanced weight')
+parser.add_argument('--is_prediction', type=str2bool, default=False, help='Whether we are prediction full images, not patch')
+parser.add_argument('--sum_prob', type=str2bool, default=False, help='Whether to summerize the overlaped probalities or to use the later probality')
+
 args = parser.parse_args()
 
 
@@ -75,6 +78,106 @@ def prepare_data(dataset_dir=args.dataset):
         test_output_names.append(cwd + "/" + dataset_dir + "/test_labels/" + file)
     return train_input_names,train_output_names, val_input_names, val_output_names, test_input_names, test_output_names
 
+# process prediction on full test images
+def get_predict(ortho, sess, num_classes, l_ch, l_height, l_width, d_ch, d_height, d_width, offset=0):
+    h_limit = ortho.shape[0]
+    w_limit = ortho.shape[1]
+
+    # create input, label patches
+    rects = []  # input data region
+    o_patches = []
+    for y in range(offset, h_limit, l_height):
+        
+        for x in range(offset, w_limit, l_width):
+            if (y + d_height > h_limit):
+                y = h_limit - d_height
+            if (x + d_width > w_limit):
+                x = w_limit - d_width
+            rects.append((y - offset, x - offset,
+                          y - offset + d_height, x - offset + d_width))
+            # ortho patch
+            o_patch = ortho[y:y + d_height, x:x + d_width, :]
+            # o_patch = o_patch.swapaxes(0, 2).swapaxes(1, 2)
+            o_patches.append(o_patch)
+
+    o_patches = np.asarray(o_patches, dtype=np.float32)
+
+    # the number of patches
+    n_patches = len(o_patches)
+    print 'n_patches %s' % n_patches
+
+    # create predict, label patches
+    pred_patches = np.zeros(
+        (n_patches, l_height, l_width, num_classes), dtype=np.float32)
+    for i in range(n_patches):
+        input_image = np.expand_dims(o_patches[i], axis=0)
+        prob_image = sess.run(prob,feed_dict={input:input_image})
+        pred_patches[i] = np.array(prob_image[0])
+
+    pred_img = np.zeros((h_limit, w_limit, num_classes), dtype=np.float32)
+    for i, (rect, predict) in enumerate(zip(rects, pred_patches)):
+        if sum_prob:
+            pred_img[rect[0] + d_height / 2 - l_height / 2:
+                 rect[0] + d_height / 2 + l_height / 2,
+                 rect[1] + d_width / 2 - l_width / 2:
+                 rect[1] + d_width / 2 + l_width / 2, :] += predict
+        else:
+            pred_img[rect[0] + d_height / 2 - l_height / 2:
+                 rect[0] + d_height / 2 + l_height / 2,
+                 rect[1] + d_width / 2 - l_width / 2:
+                 rect[1] + d_width / 2 + l_width / 2, :] = predict
+    out_h = pred_img.shape[0] - (d_height - l_height)
+    out_w = pred_img.shape[1] - (d_width - l_width)
+    pred_img = pred_img[d_height / 2 - l_height / 2:out_h,
+                        d_width / 2 - l_width / 2:out_w, :]
+    ortho_img = ortho[d_height / 2 - l_height / 2 + offset:out_h,
+                      d_width / 2 - l_width / 2 + offset:out_w, :]
+
+    return pred_img, ortho_img
+
+def metrics(predictions, gts):
+    """ Compute the metrics from the RGB-encoded predictions and ground truthes
+    Args:
+        predictions (array list): list of RGB-encoded predictions (2D maps)
+        gts (array list): list of RGB-encoded ground truthes (2D maps, same dims)
+    """
+    prediction_labels = np.concatenate([np.flatten(l) for l in predictions])
+    gt_labels = np.concatenate([np.flatten(l) for l in gts])
+
+    cm = confusion_matrix(
+            gt_labels,
+            prediction_labels,
+            range(len(label_values)))
+
+    print "Confusion matrix :"
+    print cm
+    print "---"
+    # Compute global accuracy
+    accuracy = sum([cm[x][x] for x in range(len(cm))])
+    total = sum(sum(cm))
+    print "{} pixels processed".format(total)
+    print "Total accuracy : {}%".format(accuracy * 100 / float(total))
+    print "---"
+    # Compute F1 score
+    F1Score = np.zeros(len(label_values))
+    for i in xrange(len(label_values)):
+        try:
+            F1Score[i] = 2. * cm[i,i] / (np.sum(cm[i,:]) + np.sum(cm[:,i]))
+        except:
+            # Ignore exception if there is no element in class i for test set
+            pass
+    print "F1Score :"
+    for l_id, score in enumerate(F1Score):
+        print "{}: {}".format(label_values[l_id], score)
+
+    print "---"
+    # Compute kappa coefficient
+    total = np.sum(cm)
+    pa = np.trace(cm) / float(total)
+    pe = np.sum(np.sum(cm, axis=0) * np.sum(cm, axis=1)) / float(total*total)
+    kappa = (pa - pe) / (1 - pe);
+    print "Kappa: " + str(kappa)
+
 
 # Check if model is available
 AVAILABLE_MODELS = ["FC-DenseNet56", "FC-DenseNet67", "FC-DenseNet103", "FC-DenseNet158", 
@@ -89,7 +192,8 @@ if args.model not in AVAILABLE_MODELS:
 # Load the data
 print("Loading the data ...")
 train_input_names,train_output_names, val_input_names, val_output_names, test_input_names, test_output_names = prepare_data()
-balanced_weight = utils.median_frequency_balancing(args.dataset + "/train_labels/")
+if args.balanced_weight:
+    balanced_weight = utils.median_frequency_balancing(args.dataset + "/train_labels/")
 
 class_names_list = helpers.get_class_list(os.path.join(args.dataset, "class_list.txt"))
 class_names_string = ""
@@ -123,11 +227,11 @@ with tf.device('/gpu:'+str(args.gpu)):
         network = build_custom(input, num_classes)
 
     # Compute your (unweighted) softmax cross entropy loss
-    if not balanced_weight:
+    if not args.balanced_weight:
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
     else:
-        loss = balanced_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)
-
+        loss = args.balanced_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)
+        
     opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -139,6 +243,9 @@ sess.run(tf.global_variables_initializer())
 utils.count_params()
 
 model_checkpoint_name = "checkpoints/latest_model.ckpt" #_" + args.model + "_" + args.dataset + "
+if args.is_prediction
+    args.is_training = False
+
 if args.continue_training or not args.is_training:
     print('Loaded latest model checkpoint')
     saver.restore(sess, model_checkpoint_name)
@@ -340,7 +447,7 @@ if args.is_training:
 
     plt.savefig('loss_vs_epochs.png')
 
-else:
+else if not is_prediction:
     print("***** Begin testing *****")
 
     # Create directories if needed
@@ -417,3 +524,72 @@ else:
     print("Average F1 score = ", avg_f1)
     print("Average mean IoU score = ", avg_iou)
 
+if args.is_prediction:
+
+    img_dir = args.dataset+'../test/sat/'
+    offset = 0
+
+    print("Start prediction ...")
+    with tf.device('/gpu:'+str(gpu)):
+        input = tf.placeholder(tf.float32,shape=[None,None,None,3])
+        output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
+        network = build_fc_densenet(input, preset_model = 'FC-DenseNet158', num_classes=2)
+        prob = tf.nn.softmax(network)
+
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    sess=tf.Session(config=config)
+
+    saver=tf.train.Saver(max_to_keep=1000)
+    # sess.run(tf.global_variables_initializer())
+
+    print('Loaded latest model checkpoint')
+    saver.restore(sess, "checkpoints/latest_model.ckpt")
+
+    result_dir = 'prediction_#9'
+    print result_dir
+    if not os.path.exists(result_dir):
+        os.mkdir(result_dir)
+
+    num = 1
+    l_ch, l_height, l_width = 1, 512, 512
+    d_ch, d_height, d_width = 3, 512, 512
+
+    times = 0
+    pred_label_list = []
+    gt_label_list = []
+    for img_fname in glob.glob('%s/*.tif*' % img_dir):
+        ortho = cv.imread(img_fname,-1)
+        ortho = ortho.astype('float32')
+        ortho = ortho/255.0
+
+        gt_label = cv.imread(args.dataset+'../test/map/'+img_fname[:-1],-1)
+        st = time.time()
+        print 'origin ortho.shape',ortho.shape
+        pred_img, ortho_img = get_predict(ortho, sess, args.num_classes,
+                                          l_ch, l_height, l_width,
+                                          d_ch, d_height, d_width, offset)
+        print time.time() - st, 'sec'
+        times += time.time() - st
+        #pred class label images
+        if args.sum_prob:
+            pred_label = np.argmax(pred_img,axis=2)
+            pred_img_colour = colour_code_segmentation(pred_label)
+        else:
+            pred_img = pred_img[:,:,1:]
+            pred_label = pred_img[]>=0.5
+            pred_img_colour = colour_code_segmentation(pred_label)
+        cv.imwrite('%s/pred_%d_%s.png' % (result_dir, offset, basename(img_fname)),pred_img * 125)
+        cv.imwrite('%s/pred_colour_%d_%s.png' % (result_dir, offset, basename(img_fname)),pred_img_colour)
+        cv.imwrite('%s/ortho_%d_%s.png' % (result_dir, offset, basename(img_fname)),ortho_img)
+        np.save('%s/pred_%d_%s' % (result_dir, offset, basename(img_fname)),
+                pred_img)
+    
+        print img_fname
+
+        pred_label_list.append(pred_label)
+        gt_label_list.append(gt_label)
+    times /= 10
+    print times
+    print "Computing metrics..."
+    metrics(pred_label_list, gt_label_list)

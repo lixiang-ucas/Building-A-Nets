@@ -14,7 +14,12 @@ import os
 from helper2 import *
 from utils2 import *
 
+sys.path.append("models")
 from FC_DenseNet_Tiramisu import build_fc_densenet
+from Encoder_Decoder import build_encoder_decoder
+from Encoder_Decoder_Skip import build_encoder_decoder_skip
+from RefineNet import build_refinenet
+from HF_FCN import build_hf_fcn
 
 def get_predict(ortho, sess, num,
                 l_ch, l_height, l_width,
