@@ -32,11 +32,12 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--exp_id', type=int, default=1, help='Number of experiments')
 parser.add_argument('--num_epochs', type=int, default=300, help='Number of epochs to train for')
 parser.add_argument('--is_training', type=str2bool, default=True, help='Whether we are training or testing')
 parser.add_argument('--continue_training', type=str2bool, default=False, help='Whether to continue training from a checkpoint')
 parser.add_argument('--dataset', type=str, default="CamVid", help='Dataset you are using.')
-parser.add_argument('--crop_height', type=int, default=352, help='Height of input image to network')
+parser.add_argument('--crop_height', type=int, default=360, help='Height of input image to network')
 parser.add_argument('--crop_width', type=int, default=480, help='Width of input image to network')
 parser.add_argument('--batch_size', type=int, default=1, help='Width of input image to network')
 parser.add_argument('--num_val_images', type=int, default=10, help='The number of images to used for validations')
@@ -46,7 +47,9 @@ parser.add_argument('--brightness', type=str2bool, default=False, help='Whether 
 parser.add_argument('--model', type=str, default="FC-DenseNet103", help='The model you are using. Currently supports:\
     FC-DenseNet56, FC-DenseNet67, FC-DenseNet103, FC-DenseNet158, FC-DenseNet232, Encoder-Decoder, Encoder-Decoder-Skip, RefineNet-Res101, RefineNet-Res152, HF-FCN, custom')
 parser.add_argument('--gpu', type=int, default=0, help='Set GPU device id')
-parser.add_argument('--balanced_weight', type=str2bool, default=False, help='whegher to use balanced weight')
+parser.add_argument('--is_BC', type=str2bool, default=False, help='whegher to use balanced weight')
+parser.add_argument('--is_balanced_weight', type=str2bool, default=False, help='whegher to use balanced weight')
+parser.add_argument('--is_edge_weight', type=str2bool, default=False, help='whegher to use balanced weight')
 
 args = parser.parse_args()
 
@@ -55,6 +58,7 @@ args = parser.parse_args()
 def prepare_data(dataset_dir=args.dataset):
     train_input_names=[]
     train_output_names=[]
+    train_output_weight_names=[]
     val_input_names=[]
     val_output_names=[]
     test_input_names=[]
@@ -65,6 +69,10 @@ def prepare_data(dataset_dir=args.dataset):
     for file in os.listdir(dataset_dir + "/train_labels"):
         cwd = os.getcwd()
         train_output_names.append(cwd + "/" + dataset_dir + "/train_labels/" + file)
+    if args.is_edge_weight:
+        for file in os.listdir(dataset_dir + "/train_labels_weights"):
+            cwd = os.getcwd()
+            train_output_weight_names.append(cwd + "/" + dataset_dir + "/train_labels_weights/" + file)
     for file in os.listdir(dataset_dir + "/val"):
         cwd = os.getcwd()
         val_input_names.append(cwd + "/" + dataset_dir + "/val/" + file)
@@ -77,7 +85,7 @@ def prepare_data(dataset_dir=args.dataset):
     for file in os.listdir(dataset_dir + "/test_labels"):
         cwd = os.getcwd()
         test_output_names.append(cwd + "/" + dataset_dir + "/test_labels/" + file)
-    return train_input_names,train_output_names, val_input_names, val_output_names, test_input_names, test_output_names
+    return train_input_names,train_output_names, train_output_weight_names, val_input_names, val_output_names, test_input_names, test_output_names
 
 # Check if model is available
 AVAILABLE_MODELS = ["FC-DenseNet56", "FC-DenseNet67", "FC-DenseNet103", "FC-DenseNet158", "FC-DenseNet232", 
@@ -91,7 +99,10 @@ if args.model not in AVAILABLE_MODELS:
 
 # Load the data
 print("Loading the data ...")
-train_input_names,train_output_names, val_input_names, val_output_names, test_input_names, test_output_names = prepare_data()
+train_input_names, train_output_names, train_output_weight_names, val_input_names, val_output_names, test_input_names, test_output_names = prepare_data()
+
+print(len(train_input_names),len(train_output_names),len(train_output_weight_names))
+print(len(val_input_names),len(val_output_names),len(test_input_names),len(test_output_names))
 
 class_names_list = helpers.get_class_list(os.path.join(args.dataset, "class_list.txt"))
 class_names_string = ""
@@ -103,19 +114,21 @@ for class_name in class_names_list:
 
 num_classes = len(class_names_list)
 
-if args.balanced_weight:
+if args.is_balanced_weight:
     b_weight = utils.median_frequency_balancing(args.dataset + "/train_labels/", num_classes)
 
 print("Preparing the model ...")
-input = tf.placeholder(tf.float32,shape=[None,None,None,3])
-output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
-
 with tf.device('/gpu:'+str(args.gpu)):
     input = tf.placeholder(tf.float32,shape=[None,None,None,3])
     output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
+    if args.is_balanced_weight or args.is_edge_weight:
+        weight = tf.placeholder(tf.float32,shape=[None,None,None,1])
 
     if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
-        network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=True, compression_rate=0.5)
+        if args.is_BC:
+            network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=1, compression_rate=0.5)
+        else:
+            network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=False, compression_rate=1)
     elif args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
         network = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
     elif args.model == "Encoder-Decoder":
@@ -128,10 +141,14 @@ with tf.device('/gpu:'+str(args.gpu)):
         network = build_custom(input, num_classes)
 
     # Compute your (unweighted) softmax cross entropy loss
-    if not args.balanced_weight:
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+    if args.is_balanced_weight:
+        pixel_weight = b_weight*tf.argmax(input=output,dimension=3)+tf.argmin(input=output,dimension=3)
+        pixel_weight = tf.cast(pixel_weight, tf.float32)
+        loss = tf.reduce_mean(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+    elif args.is_edge_weight:
+        loss = tf.reduce_mean(weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
     else:
-        loss = b_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)
+        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
         
     opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
 config = tf.ConfigProto()
@@ -143,7 +160,7 @@ sess.run(tf.global_variables_initializer())
 
 utils.count_params()
 
-model_checkpoint_name = "checkpoints/latest_model.ckpt" #_" + args.model + "_" + args.dataset + "
+model_checkpoint_name = "checkpoints_#%d/latest_model.ckpt" % args.exp_id #_" + args.model + "_" + args.dataset + "
 if args.continue_training or not args.is_training:
     print('Loaded latest model checkpoint')
     saver.restore(sess, model_checkpoint_name)
@@ -153,7 +170,7 @@ avg_scores_per_epoch = []
 if args.is_training:
 
     print("***** Begin training *****")
-
+    f = open('loss_#%d.txt' % (args.exp_id),'w')
     avg_loss_per_epoch = []
 
     # Which validation images doe we want
@@ -172,11 +189,12 @@ if args.is_training:
         id_list = np.random.permutation(len(train_input_names))
         num_iters = int(np.floor(len(id_list) / args.batch_size))
 
-        for i in range(num_iters)[:1000]:
+        for i in range(num_iters):
             st=time.time()
             
             input_image_batch = []
-            output_image_batch = [] 
+            output_image_batch = []
+            pixel_weight_batch = [] 
 
             # Collect a batch of images
             for j in range(args.batch_size):
@@ -184,16 +202,23 @@ if args.is_training:
                 id = id_list[index]
                 input_image = cv2.imread(train_input_names[id],-1)
                 output_image = cv2.imread(train_output_names[id],-1)
-
-                # Data augmentation
-                input_image, output_image = utils.random_crop(input_image, output_image, args.crop_height, args.crop_width)
+                if args.is_edge_weight:
+                    pixel_weight = cv2.imread(train_output_weight_names[id],-1)
+                    # Data augmentation
+                    input_image, output_image, pixel_weight = utils.random_crop(input_image, output_image, pixel_weight, args.crop_height, args.crop_width)
+                else:
+                    input_image, output_image = utils.random_crop(input_image, output_image, None, args.crop_height, args.crop_width)
 
                 if args.h_flip and random.randint(0,1):
                     input_image = cv2.flip(input_image, 1)
                     output_image = cv2.flip(output_image, 1)
+                    if args.is_edge_weight:
+                        pixel_weight = cv2.flip(pixel_weight, 1)
                 if args.v_flip and random.randint(0,1):
                     input_image = cv2.flip(input_image, 0)
                     output_image = cv2.flip(output_image, 0)
+                    if args.is_edge_weight:
+                        pixel_weight = cv2.flip(pixel_weight, 0)
                 if args.brightness:
                     factor = 1.0 + abs(random.gauss(mu=0.0, sigma=self.brightness))
                     if random.randint(0,1):
@@ -205,28 +230,27 @@ if args.is_training:
                 # Prep the data. Make sure the labels are in one-hot format
                 input_image = np.float32(input_image) / 255.0
                 output_image = np.float32(helpers.one_hot_it(label=output_image, num_classes=num_classes))
-                
                 input_image_batch.append(np.expand_dims(input_image, axis=0))
                 output_image_batch.append(np.expand_dims(output_image, axis=0))
+                if args.is_edge_weight:
+                    pixel_weight_batch.append(pixel_weight[np.newaxis,:,:,np.newaxis])
 
-            # ***** THIS CAUSES A MEMORY LEAK AS NEW TENSORS KEEP GETTING CREATED *****
-            # input_image = tf.image.crop_to_bounding_box(input_image, offset_height=0, offset_width=0, 
-            #                                               target_height=args.crop_height, target_width=args.crop_width).eval(session=sess)
-            # output_image = tf.image.crop_to_bounding_box(output_image, offset_height=0, offset_width=0, 
-            #                                               target_height=args.crop_height, target_width=args.crop_width).eval(session=sess)
-            # ***** THIS CAUSES A MEMORY LEAK AS NEW TENSORS KEEP GETTING CREATED *****
-
-            # memory()
-            
             if args.batch_size == 1:
                 input_image_batch = input_image_batch[0]
                 output_image_batch = output_image_batch[0]
+                if args.is_edge_weight:
+                    pixel_weight_batch = pixel_weight_batch[0]
             else:
                 input_image_batch = np.squeeze(np.stack(input_image_batch, axis=1))
                 output_image_batch = np.squeeze(np.stack(output_image_batch, axis=1))
+                if args.is_edge_weight:
+                    pixel_weight_batch = np.squeeze(np.stack(pixel_weight_batch, axis=1))
 
             # Do the training
-            _,current=sess.run([opt,loss],feed_dict={input:input_image_batch,output:output_image_batch})
+            if args.is_edge_weight:
+                _,current=sess.run([opt,loss],feed_dict={input:input_image_batch,weight:pixel_weight_batch, output:output_image_batch})
+            else:
+                _,current=sess.run([opt,loss],feed_dict={input:input_image_batch, output:output_image_batch})
             current_losses.append(current)
             cnt = cnt + args.batch_size
             if cnt % 20 == 0:
@@ -235,16 +259,21 @@ if args.is_training:
 
         mean_loss = np.mean(current_losses)
         avg_loss_per_epoch.append(mean_loss)
-        
+
+        string_print = "Training loss: Epoch = %d Count = %d Epoch Loss = %.2f"%(epoch,cnt,mean_loss)
+        utils.LOG(string_print)
+        f.writelines(str(mean_loss)+'\n')
+        f.flush()
+
         # Create directories if needed
-        if not os.path.isdir("%s/%04d"%("checkpoints",epoch)):
-            os.makedirs("%s/%04d"%("checkpoints",epoch))
+        if not os.path.isdir("checkpoints_#%d/%04d"%(args.exp_id, epoch)):
+            os.makedirs("checkpoints_#%d/%04d"%(args.exp_id,epoch))
 
         saver.save(sess,model_checkpoint_name)
-        saver.save(sess,"%s/%04d/model.ckpt"%("checkpoints",epoch))
+        saver.save(sess,"checkpoints_#%d/%04d/model.ckpt"%(args.exp_id,epoch))
 
 
-        target=open("%s/%04d/val_scores.txt"%("checkpoints",epoch),'w')
+        target=open("checkpoints_#%d/%04d/val_scores.txt"%(args.exp_id,epoch),'w')
         target.write("val_name, avg_accuracy, precision, recall, f1 score, mean iou %s\n" % (class_names_string))
 
         scores_list = []
@@ -296,8 +325,8 @@ if args.is_training:
  
             file_name = os.path.basename(val_input_names[ind])
             file_name = os.path.splitext(file_name)[0]
-            cv2.imwrite("%s/%04d/%s_pred.png"%("checkpoints",epoch, file_name),np.uint8(out_vis_image))
-            cv2.imwrite("%s/%04d/%s_gt.png"%("checkpoints",epoch, file_name),np.uint8(gt))
+            cv2.imwrite("checkpoints_#%d/%04d/%s_pred.png"%(args.exp_id,epoch, file_name),np.uint8(out_vis_image))
+            cv2.imwrite("checkpoints_#%d/%04d/%s_gt.png"%(args.exp_id,epoch, file_name),np.uint8(gt))
 
 
         target.close()
@@ -321,38 +350,39 @@ if args.is_training:
 
         scores_list = []
 
+    f.close()
     fig = plt.figure(figsize=(11,8))
     ax1 = fig.add_subplot(111)
 
     
-    ax1.plot(range(num_epochs), avg_scores_per_epoch)
+    ax1.plot(range(args.num_epochs), avg_scores_per_epoch)
     ax1.set_title("Average validation accuracy vs epochs")
     ax1.set_xlabel("Epoch")
     ax1.set_ylabel("Avg. val. accuracy")
 
 
-    plt.savefig('accuracy_vs_epochs.png')
+    plt.savefig('accuracy_vs_epochs_#%d.png' % args.exp_id)
 
     plt.clf()
 
     ax1 = fig.add_subplot(111)
 
     
-    ax1.plot(range(num_epochs), avg_loss_per_epoch)
+    ax1.plot(range(args.num_epochs), avg_loss_per_epoch)
     ax1.set_title("Average loss vs epochs")
     ax1.set_xlabel("Epoch")
     ax1.set_ylabel("Current loss")
 
-    plt.savefig('loss_vs_epochs.png')
+    plt.savefig('loss_vs_epochs_#%d.png' % args.exp_id)
 
 else:
     print("***** Begin testing *****")
 
     # Create directories if needed
-    if not os.path.isdir("%s"%("Test")):
-            os.makedirs("%s"%("Test"))
+    if not os.path.isdir("Test_#%d"%(args.exp_id)):
+            os.makedirs("Test_#%d"%(args.exp_id))
 
-    target=open("%s/test_scores.txt"%("Test"),'w')
+    target=open("Test_#%d/test_scores.txt"%(args.exp_id),'w')
     target.write("test_name, avg_accuracy, precision, recall, f1 score, mean iou %s\n" % (class_names_string))
     scores_list = []
     class_scores_list = []
@@ -401,8 +431,8 @@ else:
         gt = helpers.reverse_one_hot(helpers.one_hot_it(gt))
         gt = helpers.colour_code_segmentation(gt)
 
-        cv2.imwrite("%s/%s_pred.png"%("Test", file_name),np.uint8(out_vis_image))
-        cv2.imwrite("%s/%s_gt.png"%("Test", file_name),np.uint8(gt))
+        cv2.imwrite("Test_#%d/%s_pred.png"%(args.exp_id, file_name),np.uint8(out_vis_image))
+        cv2.imwrite("Test_#%d/%s_gt.png"%(args.exp_id, file_name),np.uint8(gt))
 
 
     target.close()

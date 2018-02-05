@@ -3,23 +3,21 @@
 
 import time
 from os.path import basename
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import glob
 import numpy as np
 import cv2 as cv
 import tensorflow as tf
-import argparse
+#import argparse
 import os
+import sys
 
-from helper2 import *
-from utils2 import *
+from helpers2 import *
+from utils import *
 
 sys.path.append("models")
 from FC_DenseNet_Tiramisu import build_fc_densenet
-from Encoder_Decoder import build_encoder_decoder
-from Encoder_Decoder_Skip import build_encoder_decoder_skip
 from RefineNet import build_refinenet
-from HF_FCN import build_hf_fcn
 
 def get_predict(ortho, sess, num,
                 l_ch, l_height, l_width,
@@ -31,7 +29,7 @@ def get_predict(ortho, sess, num,
     rects = []  # input data region
     o_patches = []
     for y in range(offset, h_limit, l_height):
-        
+
         for x in range(offset, w_limit, l_width):
             if (y + d_height > h_limit):
 			    y = h_limit - d_height
@@ -103,10 +101,10 @@ if __name__ == '__main__':
     offset = 0
 
     print("Start prediction ...")
-    with tf.device('/gpu:1'):
+    with tf.device('/gpu:0'):
         input = tf.placeholder(tf.float32,shape=[None,None,None,3])
         output = tf.placeholder(tf.float32,shape=[None,None,None,2])
-        network = build_fc_densenet(input, preset_model = 'FC-DenseNet158', num_classes=2)
+        network = build_fc_densenet(input, preset_model = 'FC-DenseNet158', num_classes=2,is_bottneck=True, compression_rate=0.5)
         prob = tf.nn.softmax(network)
     is_training = False
     continue_training = False
@@ -127,7 +125,7 @@ if __name__ == '__main__':
         print('Loaded latest model checkpoint')
         saver.restore(sess, "checkpoints/latest_model.ckpt")
 
-    result_dir = 'prediction_#9'
+    result_dir = 'prediction_#18-7'
     print result_dir
     if not os.path.exists(result_dir):
         os.mkdir(result_dir)
@@ -156,7 +154,7 @@ if __name__ == '__main__':
         cv.imwrite('%s/ortho_%d_%s.png' % (result_dir, offset, basename(img_fname)),ortho_img)
         np.save('%s/pred_%d_%s' % (result_dir, offset, basename(img_fname)),
                 pred_img)
-    
+
         print img_fname
     times /= 10
     print times

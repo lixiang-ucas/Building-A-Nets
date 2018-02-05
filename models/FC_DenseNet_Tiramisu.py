@@ -4,19 +4,23 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import numpy as np
 
-def preact_conv(inputs, n_filters, filter_size=[3, 3], dropout_p=0.2):
+def preact_conv(inputs, n_filters, filter_size=[3, 3], dropout_p=0.2, is_bottneck=False):
     """
     Basic pre-activation layer for DenseNets
     Apply successivly BatchNormalization, ReLU nonlinearity, Convolution and
     Dropout (if dropout_p > 0) on the inputs
     """
+    if is_bottneck:
+      preact = tf.nn.relu(slim.batch_norm(inputs))
+      inputs = slim.conv2d(preact, 4*n_filters, [1, 1], activation_fn=None, normalizer_fn=None)
     preact = tf.nn.relu(slim.batch_norm(inputs))
     conv = slim.conv2d(preact, n_filters, filter_size, activation_fn=None, normalizer_fn=None)
     if dropout_p != 0.0:
       conv = slim.dropout(conv, keep_prob=(1.0-dropout_p))
     return conv
 
-def DenseBlock(stack, n_layers, growth_rate, dropout_p, scope=None):
+
+def DenseBlock(stack, n_layers, growth_rate, dropout_p, is_bottneck, scope=None):
   """
   DenseBlock for DenseNet and FC-DenseNet
   Arguments:
@@ -32,7 +36,7 @@ def DenseBlock(stack, n_layers, growth_rate, dropout_p, scope=None):
     new_features = []
     for j in range(n_layers):
       # Compute new feature maps
-      layer = preact_conv(stack, growth_rate, dropout_p=dropout_p)
+      layer = preact_conv(stack, growth_rate, dropout_p=dropout_p, is_bottneck=is_bottneck)
       new_features.append(layer)
       # Stack new layer
       stack = tf.concat([stack, layer], axis=-1)
@@ -40,13 +44,13 @@ def DenseBlock(stack, n_layers, growth_rate, dropout_p, scope=None):
     return stack, new_features
 
 
-def TransitionDown(inputs, n_filters, dropout_p=0.2, scope=None):
+def TransitionDown(inputs, n_filters, dropout_p=0.2, compression_rate=1, scope=None):
   """
   Transition Down (TD) for FC-DenseNet
   Apply 1x1 BN + ReLU + conv then 2x2 max pooling
   """
   with tf.name_scope(scope) as sc:
-    l = preact_conv(inputs, n_filters, filter_size=[1, 1], dropout_p=dropout_p)
+    l = preact_conv(inputs, np.ceil(compression_rate*n_filters), filter_size=[1, 1], dropout_p=dropout_p)
     l = slim.pool(l, [2, 2], stride=[2, 2], pooling_type='MAX')
     return l
 
@@ -73,7 +77,7 @@ def mean_image_subtraction(inputs, means=[123.68, 116.78, 103.94]):
         channels[i] -= means[i]
     return tf.concat(axis=3, values=channels)
 
-def build_fc_densenet(inputs, preset_model='FC-DenseNet56', num_classes=12, n_filters_first_conv=48, n_pool=5, growth_rate=12, n_layers_per_block=4, dropout_p=0.2, scope=None):
+def build_fc_densenet(inputs, preset_model='FC-DenseNet56', num_classes=12, n_filters_first_conv=48, n_pool=5, growth_rate=12, n_layers_per_block=4, dropout_p=0.2, is_bottneck=False, compression_rate=1, scope=None):
     """
     Builds the FC-DenseNet model
 
@@ -136,13 +140,13 @@ def build_fc_densenet(inputs, preset_model='FC-DenseNet56', num_classes=12, n_fi
 
       for i in range(n_pool):
         # Dense Block
-        stack, _ = DenseBlock(stack, n_layers_per_block[i], growth_rate, dropout_p, scope='denseblock%d' % (i+1))
+        stack, _ = DenseBlock(stack, n_layers_per_block[i], growth_rate, dropout_p, is_bottneck, scope='denseblock%d' % (i+1))
         n_filters += growth_rate * n_layers_per_block[i]
         # At the end of the dense block, the current stack is stored in the skip_connections list
         skip_connection_list.append(stack)
 
         # Transition Down
-        stack = TransitionDown(stack, n_filters, dropout_p, scope='transitiondown%d'%(i+1))
+        stack = TransitionDown(stack, n_filters, dropout_p, compression_rate, scope='transitiondown%d'%(i+1))
 
       skip_connection_list = skip_connection_list[::-1]
 
@@ -152,7 +156,7 @@ def build_fc_densenet(inputs, preset_model='FC-DenseNet56', num_classes=12, n_fi
 
       # Dense Block
       # We will only upsample the new feature maps
-      stack, block_to_upsample = DenseBlock(stack, n_layers_per_block[n_pool], growth_rate, dropout_p, scope='denseblock%d' % (n_pool + 1))
+      stack, block_to_upsample = DenseBlock(stack, n_layers_per_block[n_pool], growth_rate, dropout_p, is_bottneck, scope='denseblock%d' % (n_pool + 1))
 
 
       #######################
@@ -166,7 +170,7 @@ def build_fc_densenet(inputs, preset_model='FC-DenseNet56', num_classes=12, n_fi
 
         # Dense Block
         # We will only upsample the new feature maps
-        stack, block_to_upsample = DenseBlock(stack, n_layers_per_block[n_pool + i + 1], growth_rate, dropout_p, scope='denseblock%d' % (n_pool + i + 2))
+        stack, block_to_upsample = DenseBlock(stack, n_layers_per_block[n_pool + i + 1], growth_rate, dropout_p, is_bottneck, scope='denseblock%d' % (n_pool + i + 2))
 
 
       #####################

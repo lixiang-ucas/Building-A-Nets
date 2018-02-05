@@ -4,7 +4,7 @@ import shutil
 import os
 import glob
 import numpy as np
-import cv2 as cv
+import cv2 as cv 
 import json
 import argparse
 
@@ -74,18 +74,18 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
 
 
 if __name__ == '__main__':
-    create_patches(256, 256, 64, 1,
+    create_patches(512, 512, 128, 1,
                      args.dataset+'/mass_buildings/valid/sat',
                      args.dataset+'/mass_buildings/valid/map',
-                     args.dataset+'/mass_buildings/patches256/val/',
-                     args.dataset+'/mass_buildings/patches256/val_labels/')
-    create_patches(256, 256, 64, 1,
+                     args.dataset+'/mass_buildings/patches512/val/',
+                     args.dataset+'/mass_buildings/patches512/val_labels/')
+    create_patches(512, 512, 128, 1,
              args.dataset+'/mass_buildings/train/sat',
              args.dataset+'/mass_buildings/train/map',
-             args.dataset+'/mass_buildings/patches256/train/',
-             args.dataset+'/mass_buildings/patches256/train_labels/')
-    create_patches(256, 256, 64, 1,
+             args.dataset+'/mass_buildings/patches512/train/',
+             args.dataset+'/mass_buildings/patches512/train_labels/')
+    create_patches(512, 512, 128, 1,
                  args.dataset+'/mass_buildings/test/sat',
                  args.dataset+'/mass_buildings/test/map',
-                 args.dataset+'/mass_buildings/patches256/test/',
-                 args.dataset+'/mass_buildings/patches256/test_labels/')
+                 args.dataset+'/mass_buildings/patches512/test/',
+                 args.dataset+'/mass_buildings/patches512/test_labels/')

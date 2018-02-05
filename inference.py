@@ -10,6 +10,7 @@ import cv2 as cv
 import tensorflow as tf
 import argparse
 import os
+from sklearn.metrics import confusion_matrix
 
 sys.path.append("models")
 from FC_DenseNet_Tiramisu import build_fc_densenet
@@ -18,6 +19,8 @@ from Encoder_Decoder_Skip import build_encoder_decoder_skip
 from RefineNet import build_refinenet
 from HF_FCN import build_hf_fcn
 
+label_values = ['imp_surfaces', 'building', 'low_vegetation',
+                'tree', 'car', 'clutter']
 
 def colour_dict(x):
     """
@@ -37,7 +40,7 @@ def colour_dict(x):
            3: (0, 255, 0),      # Tree (green)
            4: (255, 255, 0),    # Car (yellow)
            5: (255, 0, 0),      # Clutter (red)
-           6: (0, 0, 0)}  
+           6: (0, 0, 0)}
 
     return {
         0: [255, 255, 255],
@@ -55,7 +58,7 @@ def colour_code_segmentation(image):
 
     # Arguments
         image: single channel array where each value represents the class key.
-        
+
     # Returns
         Colour coded image for segmentation visualization
     """
@@ -77,7 +80,7 @@ def get_predict(ortho, sess, num_classes, l_ch, l_height, l_width, d_ch, d_heigh
     rects = []  # input data region
     o_patches = []
     for y in range(offset, h_limit, l_height):
-        
+
         for x in range(offset, w_limit, l_width):
             if (y + d_height > h_limit):
                 y = h_limit - d_height
@@ -163,7 +166,7 @@ def metrics(predictions, gts):
     print "Kappa: " + str(kappa)
 
 if __name__ == '__main__':
-    gpu_id = 0
+    gpu_id = 1
     num_classes = 6
     infer_ids = [32,34,37]
     print("Start prediction ...")
@@ -181,9 +184,9 @@ if __name__ == '__main__':
     # sess.run(tf.global_variables_initializer())
 
     print('Loaded latest model checkpoint')
-    saver.restore(sess, "checkpoints6-2/latest_model.ckpt")
+    saver.restore(sess, "checkpoints_#14/latest_model.ckpt")
 
-    result_dir = 'prediction_#6'
+    result_dir = 'prediction_#14'
     print result_dir
     if not os.path.exists(result_dir):
         os.mkdir(result_dir)
@@ -195,7 +198,8 @@ if __name__ == '__main__':
     times = 0
     pred_label_list = []
     gt_label_list = []
-    BASE_FOLDER = '/media/zhoun/Data/lx/caffe/DeepNetsForEO/ISPRS/Vaihingen/'
+    BASE_FOLDER = '/home/mmvc/Xiang_Li/DL_DATA/Vaihingen/'
+    #BASE_FOLDER = '/media/zhoun/Data/lx/caffe/DeepNetsForEO/ISPRS/Vaihingen/'
     print "Processing {} images...".format(len(infer_ids),-1)
     for l in infer_ids:
         img_fname = 'top_mosaic_09cm_area{}.tif'.format(l)
@@ -218,7 +222,7 @@ if __name__ == '__main__':
         cv.imwrite('%s/ortho_%d_%s.png' % (result_dir, offset, basename(img_fname)),ortho_img)
         np.save('%s/pred_%d_%s' % (result_dir, offset, basename(img_fname)),
                 pred_img)
-    
+
         print img_fname
 
         pred_label_list.append(pred_label)

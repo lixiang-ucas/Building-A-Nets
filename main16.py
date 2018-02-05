@@ -143,7 +143,7 @@ sess.run(tf.global_variables_initializer())
 
 utils.count_params()
 
-model_checkpoint_name = "checkpoints/latest_model.ckpt" #_" + args.model + "_" + args.dataset + "
+model_checkpoint_name = "checkpoints2/latest_model.ckpt" #_" + args.model + "_" + args.dataset + "
 if args.continue_training or not args.is_training:
     print('Loaded latest model checkpoint')
     saver.restore(sess, model_checkpoint_name)
@@ -237,14 +237,14 @@ if args.is_training:
         avg_loss_per_epoch.append(mean_loss)
         
         # Create directories if needed
-        if not os.path.isdir("%s/%04d"%("checkpoints",epoch)):
-            os.makedirs("%s/%04d"%("checkpoints",epoch))
+        if not os.path.isdir("%s/%04d"%("checkpoints2",epoch)):
+            os.makedirs("%s/%04d"%("checkpoints2",epoch))
 
         saver.save(sess,model_checkpoint_name)
-        saver.save(sess,"%s/%04d/model.ckpt"%("checkpoints",epoch))
+        saver.save(sess,"%s/%04d/model.ckpt"%("checkpoints2",epoch))
 
 
-        target=open("%s/%04d/val_scores.txt"%("checkpoints",epoch),'w')
+        target=open("%s/%04d/val_scores.txt"%("checkpoints2",epoch),'w')
         target.write("val_name, avg_accuracy, precision, recall, f1 score, mean iou %s\n" % (class_names_string))
 
         scores_list = []
@@ -296,8 +296,8 @@ if args.is_training:
  
             file_name = os.path.basename(val_input_names[ind])
             file_name = os.path.splitext(file_name)[0]
-            cv2.imwrite("%s/%04d/%s_pred.png"%("checkpoints",epoch, file_name),np.uint8(out_vis_image))
-            cv2.imwrite("%s/%04d/%s_gt.png"%("checkpoints",epoch, file_name),np.uint8(gt))
+            cv2.imwrite("%s/%04d/%s_pred.png"%("checkpoints2",epoch, file_name),np.uint8(out_vis_image))
+            cv2.imwrite("%s/%04d/%s_gt.png"%("checkpoints2",epoch, file_name),np.uint8(gt))
 
 
         target.close()

@@ -11,7 +11,7 @@ import argparse
 import random
 import os, sys
 
-import helpers 
+import helpers3 as helpers 
 import utils 
 
 import matplotlib.pyplot as plt
@@ -59,26 +59,25 @@ def prepare_data(dataset_dir=args.dataset):
     val_output_names=[]
     test_input_names=[]
     test_output_names=[]
-    for file in os.listdir(dataset_dir + "/train"):
-        cwd = os.getcwd()
-        train_input_names.append(cwd + "/" + dataset_dir + "/train/" + file)
-    for file in os.listdir(dataset_dir + "/train_labels"):
-        cwd = os.getcwd()
-        train_output_names.append(cwd + "/" + dataset_dir + "/train_labels/" + file)
-    for file in os.listdir(dataset_dir + "/val"):
-        cwd = os.getcwd()
-        val_input_names.append(cwd + "/" + dataset_dir + "/val/" + file)
-    for file in os.listdir(dataset_dir + "/val_labels"):
-        cwd = os.getcwd()
-        val_output_names.append(cwd + "/" + dataset_dir + "/val_labels/" + file)
-    for file in os.listdir(dataset_dir + "/test"):
-        cwd = os.getcwd()
-        test_input_names.append(cwd + "/" + dataset_dir + "/test/" + file)
-    for file in os.listdir(dataset_dir + "/test_labels"):
-        cwd = os.getcwd()
-        test_output_names.append(cwd + "/" + dataset_dir + "/test_labels/" + file)
+    for file in os.listdir(dataset_dir + "/irrg_train"):
+        # cwd = os.getcwd()
+        train_input_names.append(dataset_dir + "/irrg_train/" + file)
+    for file in os.listdir(dataset_dir + "/labels_train"):
+        # cwd = os.getcwd()
+        train_output_names.append(dataset_dir + "/labels_train/" + file)
+    # for file in os.listdir(dataset_dir + "/val"):
+    #   cwd = os.getcwd()
+    #   val_input_names.append(cwd + "/" + dataset_dir + "/val/" + file)
+    # for file in os.listdir(dataset_dir + "/val_labels"):
+    #   cwd = os.getcwd()
+    #   val_output_names.append(cwd + "/" + dataset_dir + "/val_labels/" + file)
+    for file in os.listdir(dataset_dir + "/irrg_test"):
+        # cwd = os.getcwd()
+        test_input_names.append(dataset_dir + "/irrg_test/" + file)
+    for file in os.listdir(dataset_dir + "/labels_test"):
+        # cwd = os.getcwd()
+        test_output_names.append(dataset_dir + "/labels_test/" + file)
     return train_input_names,train_output_names, val_input_names, val_output_names, test_input_names, test_output_names
-
 # Check if model is available
 AVAILABLE_MODELS = ["FC-DenseNet56", "FC-DenseNet67", "FC-DenseNet103", "FC-DenseNet158", "FC-DenseNet232", 
                     "Encoder-Decoder", "Encoder-Decoder-Skip", 
@@ -100,11 +99,11 @@ for class_name in class_names_list:
         class_names_string = class_names_string + class_name + ", "
     else:
         class_names_string = class_names_string + class_name
-
 num_classes = len(class_names_list)
 
 if args.balanced_weight:
-    b_weight = utils.median_frequency_balancing(args.dataset + "/train_labels/", num_classes)
+    b_weight = utils.median_frequency_balancing(args.dataset + "/../gts_numpy", num_classes)
+    print('b_weight: ', b_weight)
 
 print("Preparing the model ...")
 input = tf.placeholder(tf.float32,shape=[None,None,None,3])
@@ -115,7 +114,7 @@ with tf.device('/gpu:'+str(args.gpu)):
     output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
 
     if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
-        network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=True, compression_rate=0.5)
+        network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes)
     elif args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
         network = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
     elif args.model == "Encoder-Decoder":
@@ -131,7 +130,7 @@ with tf.device('/gpu:'+str(args.gpu)):
     if not args.balanced_weight:
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
     else:
-        loss = b_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)
+        loss = tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)
         
     opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
 config = tf.ConfigProto()
@@ -143,7 +142,7 @@ sess.run(tf.global_variables_initializer())
 
 utils.count_params()
 
-model_checkpoint_name = "checkpoints/latest_model.ckpt" #_" + args.model + "_" + args.dataset + "
+model_checkpoint_name = "checkpoints_#14/latest_model.ckpt" #_" + args.model + "_" + args.dataset + "
 if args.continue_training or not args.is_training:
     print('Loaded latest model checkpoint')
     saver.restore(sess, model_checkpoint_name)
@@ -237,14 +236,14 @@ if args.is_training:
         avg_loss_per_epoch.append(mean_loss)
         
         # Create directories if needed
-        if not os.path.isdir("%s/%04d"%("checkpoints",epoch)):
-            os.makedirs("%s/%04d"%("checkpoints",epoch))
+        if not os.path.isdir("%s/%04d"%("checkpoints_#14",epoch)):
+            os.makedirs("%s/%04d"%("checkpoints_#14",epoch))
 
         saver.save(sess,model_checkpoint_name)
-        saver.save(sess,"%s/%04d/model.ckpt"%("checkpoints",epoch))
+        saver.save(sess,"%s/%04d/model.ckpt"%("checkpoints_#14",epoch))
 
 
-        target=open("%s/%04d/val_scores.txt"%("checkpoints",epoch),'w')
+        target=open("%s/%04d/val_scores.txt"%("checkpoints_#14",epoch),'w')
         target.write("val_name, avg_accuracy, precision, recall, f1 score, mean iou %s\n" % (class_names_string))
 
         scores_list = []
@@ -256,70 +255,70 @@ if args.is_training:
 
 
         # Do the validation on a small set of validation images
-        for ind in val_indices:
+        # for ind in val_indices:
             
-            input_image = np.expand_dims(np.float32(cv2.imread(val_input_names[ind],-1)[:args.crop_height, :args.crop_width]),axis=0)/255.0
-            gt = cv2.imread(val_output_names[ind],-1)[:args.crop_height, :args.crop_width]
+        #     input_image = np.expand_dims(np.float32(cv2.imread(val_input_names[ind],-1)[:args.crop_height, :args.crop_width]),axis=0)/255.0
+        #     gt = cv2.imread(val_output_names[ind],-1)[:args.crop_height, :args.crop_width]
 
-            st = time.time()
+        #     st = time.time()
 
-            output_image = sess.run(network,feed_dict={input:input_image})
+        #     output_image = sess.run(network,feed_dict={input:input_image})
             
 
-            output_image = np.array(output_image[0,:,:,:])
-            output_image = helpers.reverse_one_hot(output_image)
-            out_eval_image = output_image[:,:,0]
-            out_vis_image = helpers.colour_code_segmentation(output_image)
+        #     output_image = np.array(output_image[0,:,:,:])
+        #     output_image = helpers.reverse_one_hot(output_image)
+        #     out_eval_image = output_image[:,:,0]
+        #     out_vis_image = helpers.colour_code_segmentation(output_image)
 
-            accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
-            class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes)
-            prec = utils.precision(out_eval_image, gt)
-            rec = utils.recall(out_eval_image, gt)
-            f1 = utils.f1score(out_eval_image, gt)
-            iou = utils.compute_mean_iou(out_eval_image, gt)
+        #     accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
+        #     class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes)
+        #     prec = utils.precision(out_eval_image, gt)
+        #     rec = utils.recall(out_eval_image, gt)
+        #     f1 = utils.f1score(out_eval_image, gt)
+        #     iou = utils.compute_mean_iou(out_eval_image, gt)
         
-            file_name = utils.filepath_to_name(val_input_names[ind])
-            target.write("%s, %f, %f, %f, %f, %f"%(file_name, accuracy, prec, rec, f1, iou))
-            for item in class_accuracies:
-                target.write(", %f"%(item))
-            target.write("\n")
+        #     file_name = utils.filepath_to_name(val_input_names[ind])
+        #     target.write("%s, %f, %f, %f, %f, %f"%(file_name, accuracy, prec, rec, f1, iou))
+        #     for item in class_accuracies:
+        #         target.write(", %f"%(item))
+        #     target.write("\n")
 
-            scores_list.append(accuracy)
-            class_scores_list.append(class_accuracies)
-            precision_list.append(prec)
-            recall_list.append(rec)
-            f1_list.append(f1)
-            iou_list.append(iou)
+        #     scores_list.append(accuracy)
+        #     class_scores_list.append(class_accuracies)
+        #     precision_list.append(prec)
+        #     recall_list.append(rec)
+        #     f1_list.append(f1)
+        #     iou_list.append(iou)
             
-            gt = helpers.reverse_one_hot(helpers.one_hot_it(gt))
-            gt = helpers.colour_code_segmentation(gt)
+        #     gt = helpers.reverse_one_hot(helpers.one_hot_it(gt))
+        #     gt = helpers.colour_code_segmentation(gt)
  
-            file_name = os.path.basename(val_input_names[ind])
-            file_name = os.path.splitext(file_name)[0]
-            cv2.imwrite("%s/%04d/%s_pred.png"%("checkpoints",epoch, file_name),np.uint8(out_vis_image))
-            cv2.imwrite("%s/%04d/%s_gt.png"%("checkpoints",epoch, file_name),np.uint8(gt))
+        #     file_name = os.path.basename(val_input_names[ind])
+        #     file_name = os.path.splitext(file_name)[0]
+        #     cv2.imwrite("%s/%04d/%s_pred.png"%("checkpoints",epoch, file_name),np.uint8(out_vis_image))
+        #     cv2.imwrite("%s/%04d/%s_gt.png"%("checkpoints",epoch, file_name),np.uint8(gt))
 
 
-        target.close()
+        # target.close()
 
-        avg_score = np.mean(scores_list)
-        class_avg_scores = np.mean(class_scores_list, axis=0)
-        avg_scores_per_epoch.append(avg_score)
-        avg_precision = np.mean(precision_list)
-        avg_recall = np.mean(recall_list)
-        avg_f1 = np.mean(f1_list)
-        avg_iou = np.mean(iou_list)
+        # avg_score = np.mean(scores_list)
+        # class_avg_scores = np.mean(class_scores_list, axis=0)
+        # avg_scores_per_epoch.append(avg_score)
+        # avg_precision = np.mean(precision_list)
+        # avg_recall = np.mean(recall_list)
+        # avg_f1 = np.mean(f1_list)
+        # avg_iou = np.mean(iou_list)
 
-        print("\nAverage validation accuracy for epoch # %04d = %f"% (epoch, avg_score))
-        print("Average per class validation accuracies for epoch # %04d:"% (epoch))
-        for index, item in enumerate(class_avg_scores):
-            print("%s = %f" % (class_names_list[index], item))
-        print("Validation precision = ", avg_precision)
-        print("Validation recall = ", avg_recall)
-        print("Validation F1 score = ", avg_f1)
-        print("Validation IoU score = ", avg_iou)
+        # print("\nAverage validation accuracy for epoch # %04d = %f"% (epoch, avg_score))
+        # print("Average per class validation accuracies for epoch # %04d:"% (epoch))
+        # for index, item in enumerate(class_avg_scores):
+        #     print("%s = %f" % (class_names_list[index], item))
+        # print("Validation precision = ", avg_precision)
+        # print("Validation recall = ", avg_recall)
+        # print("Validation F1 score = ", avg_f1)
+        # print("Validation IoU score = ", avg_iou)
 
-        scores_list = []
+        # scores_list = []
 
     fig = plt.figure(figsize=(11,8))
     ax1 = fig.add_subplot(111)
@@ -333,17 +332,17 @@ if args.is_training:
 
     plt.savefig('accuracy_vs_epochs.png')
 
-    plt.clf()
+    # plt.clf()
 
-    ax1 = fig.add_subplot(111)
+    # ax1 = fig.add_subplot(111)
 
     
-    ax1.plot(range(num_epochs), avg_loss_per_epoch)
-    ax1.set_title("Average loss vs epochs")
-    ax1.set_xlabel("Epoch")
-    ax1.set_ylabel("Current loss")
+    # ax1.plot(range(num_epochs), avg_loss_per_epoch)
+    # ax1.set_title("Average loss vs epochs")
+    # ax1.set_xlabel("Epoch")
+    # ax1.set_ylabel("Current loss")
 
-    plt.savefig('loss_vs_epochs.png')
+    # plt.savefig('loss_vs_epochs.png')
 
 else:
     print("***** Begin testing *****")

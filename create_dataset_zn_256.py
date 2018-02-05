@@ -4,7 +4,7 @@ import shutil
 import os
 import glob
 import numpy as np
-import cv2 as cv
+import cv2 as cv 
 import json
 import argparse
 
@@ -29,8 +29,8 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
     print 'patch size:', sat_size, map_size, stride
 
     # get filenames
-    sat_fns = np.asarray(sorted(glob.glob('%s/*.tif*' % sat_data_dir)))
-    map_fns = np.asarray(sorted(glob.glob('%s/*.tif*' % map_data_dir)))
+    sat_fns = np.asarray(sorted(glob.glob('%s/*.png*' % sat_data_dir)))
+    map_fns = np.asarray(sorted(glob.glob('%s/*.png*' % map_data_dir)))
     index = np.arange(len(sat_fns))
     np.random.shuffle(index)
     sat_fns = sat_fns[index]
@@ -60,7 +60,7 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
                 sat_patch = np.copy(sat_im[y:y + sat_size, x:x + sat_size])
                 map_patch = np.copy(map_im[y:y + sat_size, x:x + sat_size])
 		# exclude patch including big white region
-                if np.sum(np.sum(sat_patch, axis=2) == (255 * 3)) > 40:
+                if np.sum(map_patch==1) < 1000:
                     continue
 
                 #print sat_out_dir+os.path.basename(sat_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', sat_patch.shape
@@ -75,17 +75,17 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
 
 if __name__ == '__main__':
     create_patches(256, 256, 64, 1,
-                     args.dataset+'/mass_buildings/valid/sat',
-                     args.dataset+'/mass_buildings/valid/map',
-                     args.dataset+'/mass_buildings/patches256/val/',
-                     args.dataset+'/mass_buildings/patches256/val_labels/')
+                     args.dataset+'/zn_buildings/valid/sat',
+                     args.dataset+'/zn_buildings/valid/map',
+                     args.dataset+'/zn_buildings/patches256/val/',
+                     args.dataset+'/zn_buildings/patches256/val_labels/')
     create_patches(256, 256, 64, 1,
-             args.dataset+'/mass_buildings/train/sat',
-             args.dataset+'/mass_buildings/train/map',
-             args.dataset+'/mass_buildings/patches256/train/',
-             args.dataset+'/mass_buildings/patches256/train_labels/')
+             args.dataset+'/zn_buildings/train/sat',
+             args.dataset+'/zn_buildings/train/map',
+             args.dataset+'/zn_buildings/patches256/train/',
+             args.dataset+'/zn_buildings/patches256/train_labels/')
     create_patches(256, 256, 64, 1,
-                 args.dataset+'/mass_buildings/test/sat',
-                 args.dataset+'/mass_buildings/test/map',
-                 args.dataset+'/mass_buildings/patches256/test/',
-                 args.dataset+'/mass_buildings/patches256/test_labels/')
+                 args.dataset+'/zn_buildings/test/sat',
+                 args.dataset+'/zn_buildings/test/map',
+                 args.dataset+'/zn_buildings/patches256/test/',
+                 args.dataset+'/zn_buildings/patches256/test_labels/')

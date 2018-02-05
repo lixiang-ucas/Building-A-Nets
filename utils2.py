@@ -58,17 +58,15 @@ def mean_image_subtraction(inputs, means=[123.68, 116.78, 103.94]):
     return tf.concat(axis=3, values=channels)
 
 # Randomly crop the image to a specific size. For data augmentation
-def random_crop(image, label, pixel_weight, crop_height, crop_width):
+def random_crop(image, label, crop_height, crop_width):
     if (image.shape[0] != label.shape[0]) or (image.shape[1] != label.shape[1]):
         raise Exception('Image and label must have the same dimensions!')
-
+        
     if (crop_width <= image.shape[1]) and (crop_height <= image.shape[0]):
         x = random.randint(0, image.shape[1]-crop_width)
         y = random.randint(0, image.shape[0]-crop_height)
-        if pixel_weight is not None:
-            return image[y:y+crop_height, x:x+crop_width, :], label[y:y+crop_height, x:x+crop_width], pixel_weight[y:y+crop_height, x:x+crop_width]
-        else:
-            return image[y:y+crop_height, x:x+crop_width, :], label[y:y+crop_height, x:x+crop_width]
+        
+        return image[y:y+crop_height, x:x+crop_width, :], label[y:y+crop_height, x:x+crop_width]
     else:
         raise Exception('Crop shape exceeds image dimensions!')
 
@@ -99,7 +97,7 @@ def compute_class_accuracies(y_pred, y_true, num_classes=12):
             if y_pred[i, j] == y_true[i, j]:
                 count[int(y_pred[i, j])] = count[int(y_pred[i, j])] + 1.0
 
-    # If there are no pixels from a certain class in the GT,
+    # If there are no pixels from a certain class in the GT, 
     # it returns NAN because of divide by zero
     # Replace the nans with a 1.0.
     accuracies = []
@@ -190,13 +188,13 @@ def median_frequency_balancing(labels_dir, num_classes=12):
                 label_to_frequency_dict[index].append(class_frequency)
 
     class_weights = []
-    print('class_frequency', class_frequency)
+    print(class_frequency)
 
     #Get the total pixels to calculate total_frequency later
     total_pixels = 0
     for frequencies in label_to_frequency_dict.values():
         total_pixels += sum(frequencies)
-    cls_freq = []
+
     for i, j in label_to_frequency_dict.items():
         j = sorted(j) #To obtain the median, we've got to sort the frequencies
 
@@ -204,10 +202,9 @@ def median_frequency_balancing(labels_dir, num_classes=12):
         total_frequency = sum(j) / total_pixels
         median_frequency_balanced = median_frequency / total_frequency
         class_weights.append(median_frequency_balanced)
-        cls_freq.append(total_frequency)
 
-    class_weights /= np.min(class_weights)
-    return class_weights,cls_freq
+
+    return class_weights
 
 # Compute the memory usage, for debugging
 def memory():
