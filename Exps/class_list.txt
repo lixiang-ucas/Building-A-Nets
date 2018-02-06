@@ -1,0 +1,6 @@
+imp_surfaces
+building
+low_vegetation
+tree
+car
+clutter
