@@ -43,7 +43,7 @@ parser.add_argument('--batch_size', type=int, default=1, help='Width of input im
 parser.add_argument('--num_val_images', type=int, default=10, help='The number of images to used for validations')
 parser.add_argument('--h_flip', type=str2bool, default=False, help='Whether to randomly flip the image horizontally for data augmentation')
 parser.add_argument('--v_flip', type=str2bool, default=False, help='Whether to randomly flip the image vertically for data augmentation')
-parser.add_argument('--brightness', type=str2bool, default=False, help='Whether to randomly change the image brightness for data augmentation')
+parser.add_argument('--brightness', type=float, default=None, help='Whether to randomly change the image brightness for data augmentation')
 parser.add_argument('--model', type=str, default="FC-DenseNet103", help='The model you are using. Currently supports:\
     FC-DenseNet56, FC-DenseNet67, FC-DenseNet103, FC-DenseNet158, FC-DenseNet232, Encoder-Decoder, Encoder-Decoder-Skip, RefineNet-Res101, RefineNet-Res152, HF-FCN, custom')
 parser.add_argument('--gpu', type=int, default=0, help='Set GPU device id')
@@ -171,6 +171,23 @@ if args.is_training:
 
     print("***** Begin training *****")
     f = open('loss_#%d.txt' % (args.exp_id),'w')
+    print('loss wirte to loss_#%d.txt' % (args.exp_id))
+    print("Dataset -->", args.dataset)
+    print("Model -->", args.model)
+    print("Crop Height -->", args.crop_height)
+    print("Crop Width -->", args.crop_width)
+    print("Num Epochs -->", args.num_epochs)
+    print("Batch Size -->", args.batch_size)
+    print("Num Classes -->", num_classes)
+
+    print("Data Augmentation:")
+    print("\tVertical Flip -->", args.v_flip)
+    print("\tHorizontal Flip -->", args.h_flip)
+    print("\tBrightness Alteration -->", args.brightness)
+    print("\tRotation -->", args.rotation)
+    print("\tZooming -->", args.zoom)
+    print("")
+
     avg_loss_per_epoch = []
 
     # Which validation images doe we want
@@ -225,7 +242,20 @@ if args.is_training:
                         factor = 1.0/factor
                     table = np.array([((i / 255.0) ** factor) * 255 for i in np.arange(0, 256)]).astype(np.uint8)
                     image = cv2.LUT(image, table)
-
+                if args.rotation:
+                    angle = args.rotation
+                else:
+                    angle = 0.0
+                if args.zoom:
+                    scale = args.zoom
+                else:
+                    scale = 1.0
+                if args.rotation or args.zoom:
+                    M = cv2.getRotationMatrix2D((input_image.shape[1]//2, input_image.shape[0]//2), angle, scale)
+                    input_image = cv2.warpAffine(input_image, M, (input_image.shape[1], input_image.shape[0]))
+                    output_image = cv2.warpAffine(output_image, M, (output_image.shape[1], output_image.shape[0]))
+                    if args.is_edge_weight:
+                        pixel_weight = cv2.warpAffine(pixel_weight, M, (pixel_weight.shape[1], pixel_weight.shape[0]))
 
                 # Prep the data. Make sure the labels are in one-hot format
                 input_image = np.float32(input_image) / 255.0
