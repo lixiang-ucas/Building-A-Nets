@@ -6,3 +6,4 @@ Test/*.png
 accuracy_vs_epochs.png
 loss_vs_epochs.png
 colour_codes.csv
+data/*

@@ -1,1 +1,2 @@
 Camvid数据集使用helper.py,Massachutters数据集使用helper2.py,ISPRS数据集使用helper3.py
+utils中random_crop函数包含pixel_weight, 且median_frequency_balancing函数返回cls_freq，utils2不包含

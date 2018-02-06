@@ -68,6 +68,8 @@ nohup python main_soft_cost-2.py --exp_id 22 --dataset './data/mass_buildings/pa
 #23 Camvid
 nohup python main23.py --exp_id 23 --gpu 1> log_#23.txt
 
+#41
+nohup python main_soft_cost.py --exp_id 41 --dataset './data/AerialImageDataset/patches256' --model 'FC-DenseNet158' --is_BC 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --num_epochs 200 --gpu 0
 # 融合HF-FCN和DenseNet,将HF-FCN中的融合层加到DenseNet的Decoder中
 # 使用ImageNet与训练DenseNet
 # DenseNet中的BC层,transction down
