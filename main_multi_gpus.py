@@ -133,7 +133,7 @@ def feed_all_gpu(inp_dict, models, payload_per_gpu, batch_x, batch_y, batch_w):
         stop_pos = (i + 1) * payload_per_gpu
         inp_dict[input] = batch_x[start_pos:stop_pos]
         inp_dict[output] = batch_y[start_pos:stop_pos]
-        if ((args.is_edge_weight) and (weight is not None)):
+        if ((args.is_edge_weight) and (batch_w is not None)):
             inp_dict[weight] = batch_w[start_pos:stop_pos]
     return inp_dict
 
@@ -228,11 +228,14 @@ for gpu_id in gpu_ids:
 
 print('build model on gpu tower done.')
 print('reduce model on cpu...')
-tower_x, tower_y, _, tower_preds, tower_losses, tower_grads = zip(*models)
+if args.is_edge_weight:
+    _, _, _, tower_preds, tower_losses, tower_grads = zip(*models)
+else:
+    _, _, tower_preds, tower_losses, tower_grads = zip(*models)
 aver_loss_op = tf.reduce_mean(tower_losses)
 apply_gradient_op = opt.apply_gradients(average_gradients(tower_grads))
-all_y = tf.reshape(tf.stack(tower_y, 0), [-1,num_classes])
-all_pred = tf.reshape(tf.stack(tower_preds, 0), [-1,num_classes])
+all_pred = tf.stack(tower_preds, 0)
+# all_pred = tf.reshape(tf.stack(tower_preds, 0), [-1,num_classes])
 print('reduce model on cpu done.')
 
 config = tf.ConfigProto()
@@ -260,16 +263,14 @@ if args.is_training:
     f = open('loss_#%d.txt' % (args.exp_id),'w')
     print("***** Begin training *****")
     print("exp_id -->", args.exp_id)
-    print("gpu_ids>", args.gpu_ids)
     print('loss wirte to loss_#%d.txt' % (args.exp_id))
+    print("gpu_ids>", args.gpu_ids)
     print("Dataset -->", args.dataset)
     print("Model -->", args.model)
     print("Crop Height -->", args.crop_height)
     print("Crop Width -->", args.crop_width)
     print("Num Epochs -->", args.num_epochs)
     print("Batch Size -->", args.batch_size)
-    
-    
     print("is_BC -->", args.is_BC)
     print("is_balanced_weight -->", args.is_balanced_weight)
     print("is_edge_weight -->", args.is_edge_weight)
@@ -372,6 +373,7 @@ if args.is_training:
                 output_image_batch = np.squeeze(np.stack(output_image_batch, axis=1))
                 if args.is_edge_weight:
                     pixel_weight_batch = np.squeeze(np.stack(pixel_weight_batch, axis=1))
+                    pixel_weight_batch = np.expand_dims(pixel_weight_batch, axis=3)
 
             # Do the training
             if args.is_edge_weight:
@@ -421,12 +423,12 @@ if args.is_training:
             input_image_batch = []
             output_image_batch = []
             preds = None
-            ys = None
             # Collect a batch of images
             for j in range(args.batch_size):
-                input_image = np.expand_dims(np.float32(cv2.cvtColor(cv2.imread(val_input_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]),axis=0)/255.0
+                input_image = cv2.cvtColor(cv2.imread(val_input_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]/255.0
                 input_image_batch.append(np.expand_dims(input_image, axis=0))
                 output_image = cv2.imread(val_output_names[ind],-1)[:args.crop_height, :args.crop_width]
+                output_image = np.float32(helpers.one_hot_it(label=output_image, num_classes=num_classes))
                 output_image_batch.append(np.expand_dims(output_image, axis=0))
             if args.batch_size == 1:
                 input_image_batch = input_image_batch[0]
@@ -434,31 +436,26 @@ if args.is_training:
             else:
                 input_image_batch = np.squeeze(np.stack(input_image_batch, axis=1))
                 output_image_batch = np.squeeze(np.stack(output_image_batch, axis=1))
-
-            inp_dict = feed_all_gpu({}, models, val_payload_per_gpu, input_image_batch, output_image_batch)
-            batch_pred,batch_y = sess.run([all_pred,all_y], inp_dict)
+            inp_dict = feed_all_gpu({}, models, val_payload_per_gpu, input_image_batch, output_image_batch, None)
+            batch_pred = sess.run([all_pred], inp_dict)
             if preds is None:
                 preds = batch_pred
             else:
                 preds = np.concatenate((preds, batch_pred), 0)
-            if ys is None:
-                ys = batch_y
-            else:
-                ys = np.concatenate((ys,batch_y),0)
 
             for j in range(args.batch_size):
-                gt = ys[j]
-                output_image = np.array(batch_pred[j,:,:,:])
+                gt = output_image_batch[j,:,:,:]
+                output_image = np.squeeze(preds[j])
                 output_image = helpers.reverse_one_hot(output_image)
-                out_eval_image = output_image[:,:,0]
+                gt = helpers.reverse_one_hot(gt)
                 out_vis_image = helpers.colour_code_segmentation(output_image)
 
-                accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
-                class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes)
-                prec = utils.precision(out_eval_image, gt)
-                rec = utils.recall(out_eval_image, gt)
-                f1 = utils.f1score(out_eval_image, gt)
-                iou = utils.compute_mean_iou(out_eval_image, gt)
+                accuracy = utils.compute_avg_accuracy(output_image, gt)
+                class_accuracies = utils.compute_class_accuracies(output_image, gt, num_classes)
+                prec = utils.precision(output_image, gt)
+                rec = utils.recall(output_image, gt)
+                f1 = utils.f1score(output_image, gt)
+                iou = utils.compute_mean_iou(output_image, gt)
             
                 file_name = utils.filepath_to_name(val_input_names[ind])
                 target.write("%s, %f, %f, %f, %f, %f"%(file_name, accuracy, prec, rec, f1, iou))
