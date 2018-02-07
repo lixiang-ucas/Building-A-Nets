@@ -200,8 +200,12 @@ if args.is_training:
     print("Crop Width -->", args.crop_width)
     print("Num Epochs -->", args.num_epochs)
     print("Batch Size -->", args.batch_size)
-    print("Num Classes -->", num_classes)
-
+    print("exp_id -->", args.exp_id)
+    print("gpu_ids>", args.gpu_ids)
+    print("is_BC -->", args.is_BC)
+    print("is_balanced_weight -->", args.is_balanced_weight)
+    print("is_edge_weight -->", args.is_edge_weight)
+    
     print("Data Augmentation:")
     print("\tVertical Flip -->", args.v_flip)
     print("\tHorizontal Flip -->", args.h_flip)
@@ -240,7 +244,7 @@ if args.is_training:
                 index = i*args.batch_size + j
                 id = id_list[index]
                 input_image = cv2.cvtColor(cv2.imread(train_input_names[id],-1), cv2.COLOR_BGR2RGB)
-                output_image = cv2.cvtColor(cv2.imread(train_output_names[id],-1), cv2.COLOR_BGR2RGB)
+                output_image = cv2.imread(train_output_names[id],-1)
                 if args.is_edge_weight:
                     pixel_weight = cv2.imread(train_output_weight_names[id],-1)
                     # Data augmentation
@@ -340,7 +344,7 @@ if args.is_training:
         for ind in val_indices:
             
             input_image = np.expand_dims(np.float32(cv2.cvtColor(cv2.imread(val_input_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]),axis=0)/255.0
-            gt = cv2.cvtColor(cv2.imread(val_output_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]
+            gt = cv2.imread(val_output_names[ind],-1)[:args.crop_height, :args.crop_width]
 
             st = time.time()
 
@@ -453,7 +457,7 @@ else:
         output_image = sess.run(network,feed_dict={input:input_image})
         
 
-        gt = cv2.cvtColor(cv2.imread(test_output_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]
+        gt = cv2.imread(test_output_names[ind],-1)[:args.crop_height, :args.crop_width]
 
         output_image = np.array(output_image[0,:,:,:])
         output_image = helpers.reverse_one_hot(output_image)

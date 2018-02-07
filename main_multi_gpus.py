@@ -36,7 +36,6 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exp_id', type=int, default=1, help='Number of experiments')
 parser.add_argument('--num_epochs', type=int, default=300, help='Number of epochs to train for')
 parser.add_argument('--is_training', type=str2bool, default=True, help='Whether we are training or testing')
 parser.add_argument('--continue_training', type=str2bool, default=False, help='Whether to continue training from a checkpoint')
@@ -51,7 +50,8 @@ parser.add_argument('--brightness', type=float, default=None, help='Whether to r
 parser.add_argument('--rotation', type=float, default=None, help='Whether to randomly rotate the image for data augmentation')
 parser.add_argument('--zoom', type=float, default=None, help='Whether to randomly zoom in for data augmentation')
 parser.add_argument('--model', type=str, default="FC-DenseNet103", help='The model you are using. Currently supports: FC-DenseNet56, FC-DenseNet67, FC-DenseNet103, FC-DenseNet158, FC-DenseNet232, HF-FCN, Encoder-Decoder, Encoder-Decoder-Skip, RefineNet-Res50, RefineNet-Res101, RefineNet-Res152, FRRN-A, FRRN-B, MobileUNet, MobileUNet-Skip, PSPNet-Res50, PSPNet-Res101, PSPNet-Res152, GCN-Res50, GCN-Res101, GCN-Res152, custom')
-parser.add_argument('--gpu', type=int, default=0, help='Set GPU device id')
+parser.add_argument('--exp_id', type=int, default=1, help='Number of experiments')
+parser.add_argument('--gpu_ids', type=str, default=0, help='List of GPU device id')
 parser.add_argument('--is_BC', type=str2bool, default=False, help='whegher to use balanced weight')
 parser.add_argument('--is_balanced_weight', type=str2bool, default=False, help='whegher to use balanced weight')
 parser.add_argument('--is_edge_weight', type=str2bool, default=False, help='whegher to use balanced weight')
@@ -92,6 +92,46 @@ def prepare_data(dataset_dir=args.dataset):
         test_output_names.append(cwd + "/" + dataset_dir + "/test_labels/" + file)
     return train_input_names,train_output_names, train_output_weight_names, val_input_names, val_output_names, test_input_names, test_output_names
 
+def average_losses(loss):
+    tf.add_to_collection('losses', loss)
+    # Assemble all of the losses for the current tower only.
+    losses = tf.get_collection('losses')
+    # Calculate the total loss for the current tower.
+    regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    total_loss = tf.add_n(losses + regularization_losses, name='total_loss')
+    # Compute the moving average of all individual losses and the total loss.
+    loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
+    loss_averages_op = loss_averages.apply(losses + [total_loss])
+    with tf.control_dependencies([loss_averages_op]):
+        total_loss = tf.identity(total_loss)
+    return total_loss
+
+def average_gradients(tower_grads):
+    average_grads = []
+    for grad_and_vars in zip(*tower_grads):
+        # Note that each grad_and_vars looks like the following:
+        #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+        grads = [g for g, _ in grad_and_vars]
+        # Average over the 'tower' dimension.
+        grad = tf.stack(grads, 0)
+        grad = tf.reduce_mean(grad, 0)
+        # Keep in mind that the Variables are redundant because they are shared
+        # across towers. So .. we will just return the first tower's pointer to
+        # the Variable.
+        v = grad_and_vars[0][1]
+        grad_and_var = (grad, v)
+        average_grads.append(grad_and_var)
+    return average_grads
+
+def feed_all_gpu(inp_dict, models, payload_per_gpu, batch_x, batch_y):
+    for i in range(len(models)):
+        input, output, _, _, _ = models[i]
+        start_pos = i * payload_per_gpu
+        stop_pos = (i + 1) * payload_per_gpu
+        inp_dict[input] = batch_x[start_pos:stop_pos]
+        inp_dict[output] = batch_y[start_pos:stop_pos]
+    return inp_dict
+
 # Check if model is available
 AVAILABLE_MODELS = ["FC-DenseNet56", "FC-DenseNet67", "FC-DenseNet103", "FC-DenseNet158", "FC-DenseNet232", 
                     "Encoder-Decoder", "Encoder-Decoder-Skip", 
@@ -125,62 +165,67 @@ if args.is_balanced_weight:
 network = None
 init_fn = None
 print("Preparing the model ...")
-with tf.Session() as sess:
-    with tf.device('/cpu:0'):
-        opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995)#.minimize(loss, var_list=[var for var in tf.trainable_variables()])
-        for gpu_id in gpu_ids:
-            with tf.device('/gpu:'+str(gpu_id)):
-                print('tower:%d...'% gpu_id)
-                with tf.name_scope('tower_%d' % gpu_id):
-                    input = tf.placeholder(tf.float32,shape=[None,None,None,3])
-                    output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
-                    if args.is_balanced_weight or args.is_edge_weight:
-                        weight = tf.placeholder(tf.float32,shape=[None,None,None,1])
+opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995)#.minimize(loss, var_list=[var for var in tf.trainable_variables()])
+gpu_ids = args.gpu_ids.split(',')
+print('build model...')
+print('build model on gpu tower...')
+models = []
+for gpu_id in gpu_ids:
+    gpu_id = int(gpu_id)
+    with tf.device('/gpu:%d' % gpu_id):
+        print('using tower:%d...'% gpu_id)
+        with tf.name_scope('tower_%d' % gpu_id):
+            input = tf.placeholder(tf.float32,shape=[None,None,None,3])
+            output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
+            if args.is_balanced_weight or args.is_edge_weight:
+                weight = tf.placeholder(tf.float32,shape=[None,None,None,1])
 
-                    if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
-                        if args.is_BC:
-                            network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=1, compression_rate=0.5)
-                        else:
-                            network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=False, compression_rate=1)
-                    elif args.model == "RefineNet-Res50" or args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
-                        # RefineNet requires pre-trained ResNet weights
-                        network, init_fn = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
-                    elif args.model == "FRRN-A" or args.model == "FRRN-B":
-                        network = build_frrn(input, preset_model = args.model, num_classes=num_classes)
-                    elif args.model == "Encoder-Decoder" or args.model == "Encoder-Decoder-Skip":
-                        network = build_encoder_decoder(input, preset_model = args.model, num_classes=num_classes)
-                    elif args.model == "MobileUNet" or args.model == "MobileUNet-Skip":
-                        network = build_mobile_unet(input, preset_model = args.model, num_classes=num_classes)
-                    elif args.model == "PSPNet-Res50" or args.model == "PSPNet-Res101" or args.model == "PSPNet-Res152":
-                        # Image size is required for PSPNet
-                        # PSPNet requires pre-trained ResNet weights
-                        network, init_fn = build_pspnet(input, label_size=[args.crop_height, args.crop_width], preset_model = args.model, num_classes=num_classes)
-                    elif args.model == "GCN-Res50" or args.model == "GCN-Res101" or args.model == "GCN-Res152":
-                        network, init_fn = build_gcn(input, preset_model = args.model, num_classes=num_classes)
-                    elif args.model == "custom":
-                        network = build_custom(input, num_classes) 
-                    else:
-                        raise ValueError("Error: the model %d is not available. Try checking which models are available using the command python main.py --help")
+            if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
+                if args.is_BC:
+                    network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=1, compression_rate=0.5)
+                else:
+                    network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=False, compression_rate=1)
+            elif args.model == "RefineNet-Res50" or args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
+                # RefineNet requires pre-trained ResNet weights
+                network, init_fn = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
+            elif args.model == "FRRN-A" or args.model == "FRRN-B":
+                network = build_frrn(input, preset_model = args.model, num_classes=num_classes)
+            elif args.model == "Encoder-Decoder" or args.model == "Encoder-Decoder-Skip":
+                network = build_encoder_decoder(input, preset_model = args.model, num_classes=num_classes)
+            elif args.model == "MobileUNet" or args.model == "MobileUNet-Skip":
+                network = build_mobile_unet(input, preset_model = args.model, num_classes=num_classes)
+            elif args.model == "PSPNet-Res50" or args.model == "PSPNet-Res101" or args.model == "PSPNet-Res152":
+                # Image size is required for PSPNet
+                # PSPNet requires pre-trained ResNet weights
+                network, init_fn = build_pspnet(input, label_size=[args.crop_height, args.crop_width], preset_model = args.model, num_classes=num_classes)
+            elif args.model == "GCN-Res50" or args.model == "GCN-Res101" or args.model == "GCN-Res152":
+                network, init_fn = build_gcn(input, preset_model = args.model, num_classes=num_classes)
+            elif args.model == "custom":
+                network = build_custom(input, num_classes) 
+            else:
+                raise ValueError("Error: the model %d is not available. Try checking which models are available using the command python main.py --help")
 
-                    # Compute your (unweighted) softmax cross entropy loss
-                    if args.is_balanced_weight:
-                        pixel_weight = b_weight*tf.argmax(input=output,dimension=3)+tf.argmin(input=output,dimension=3)
-                        pixel_weight = tf.cast(pixel_weight, tf.float32)
-                        loss = tf.reduce_mean(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
-                    elif args.is_edge_weight:
-                        loss = tf.reduce_mean(weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
-                    else:
-                        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
-                        
-                    grads = opt.compute_gradients(loss)
-                    models.append((loss,grads))
+            # Compute your (unweighted) softmax cross entropy loss
+            if args.is_balanced_weight:
+                pixel_weight = b_weight*tf.argmax(input=output,dimension=3)+tf.argmin(input=output,dimension=3)
+                pixel_weight = tf.cast(pixel_weight, tf.float32)
+                loss = tf.reduce_mean(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+            elif args.is_edge_weight:
+                loss = tf.reduce_mean(weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+            else:
+                loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+                
+            grads = opt.compute_gradients(loss)
+            models.append((input,output,network,loss,grads))
 
-        print('build model on gpu tower done.')
-        print('reduce model on cpu...')
-        tower_losses, tower_grads = zip(*models)
-        aver_loss_op = tf.reduce_mean(tower_losses)
-        apply_gradient_op = opt.apply_gradients(average_gradients(tower_grads))
-        print('reduce model on cpu done.')
+print('build model on gpu tower done.')
+print('reduce model on cpu...')
+tower_x, tower_y, tower_preds, tower_losses, tower_grads = zip(*models)
+aver_loss_op = tf.reduce_mean(tower_losses)
+apply_gradient_op = opt.apply_gradients(average_gradients(tower_grads))
+all_y = tf.reshape(tf.stack(tower_y, 0), [-1,num_classes])
+all_pred = tf.reshape(tf.stack(tower_preds, 0), [-1,num_classes])
+print('reduce model on cpu done.')
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -214,8 +259,12 @@ if args.is_training:
     print("Crop Width -->", args.crop_width)
     print("Num Epochs -->", args.num_epochs)
     print("Batch Size -->", args.batch_size)
-    print("Num Classes -->", num_classes)
-
+    print("exp_id -->", args.exp_id)
+    print("gpu_ids>", args.gpu_ids)
+    print("is_BC -->", args.is_BC)
+    print("is_balanced_weight -->", args.is_balanced_weight)
+    print("is_edge_weight -->", args.is_edge_weight)
+    
     print("Data Augmentation:")
     print("\tVertical Flip -->", args.v_flip)
     print("\tHorizontal Flip -->", args.h_flip)
@@ -241,6 +290,7 @@ if args.is_training:
         cnt=0
         id_list = np.random.permutation(len(train_input_names))
         num_iters = int(np.floor(len(id_list) / args.batch_size))
+        payload_per_gpu = args.batch_size/len(gpu_ids)
 
         for i in range(num_iters):
             st=time.time()
@@ -249,12 +299,14 @@ if args.is_training:
             output_image_batch = []
             pixel_weight_batch = [] 
 
+            inp_dict = {}
+
             # Collect a batch of images
             for j in range(args.batch_size):
                 index = i*args.batch_size + j
                 id = id_list[index]
                 input_image = cv2.cvtColor(cv2.imread(train_input_names[id],-1), cv2.COLOR_BGR2RGB)
-                output_image = cv2.cvtColor(cv2.imread(train_output_names[id],-1), cv2.COLOR_BGR2RGB)
+                output_image = cv2.imread(train_output_names[id],-1)
                 if args.is_edge_weight:
                     pixel_weight = cv2.imread(train_output_weight_names[id],-1)
                     # Data augmentation
@@ -316,7 +368,9 @@ if args.is_training:
             if args.is_edge_weight:
                 _,current=sess.run([apply_gradient_op, aver_loss_op],feed_dict={input:input_image_batch,weight:pixel_weight_batch, output:output_image_batch})
             else:
-                _,current=sess.run([apply_gradient_op, aver_loss_op],feed_dict={input:input_image_batch, output:output_image_batch})
+                inp_dict = feed_all_gpu(inp_dict, models, payload_per_gpu, input_image_batch, output_image_batch)
+                _, current = sess.run([apply_gradient_op, aver_loss_op], inp_dict)
+                # _,current=sess.run([apply_gradient_op, aver_loss_op],feed_dict={input:input_image_batch, output:output_image_batch})
             current_losses.append(current)
             cnt = cnt + args.batch_size
             if cnt % 20 == 0:
@@ -351,49 +405,70 @@ if args.is_training:
 
 
         # Do the validation on a small set of validation images
-        for ind in val_indices:
+        total_batch = int(len(val_indices) / args.batch_size)
+        for batch_idx in range(total_batch):
+            input_image_batch = []
+            output_image_batch = []
+            preds = None
+            ys = None
+            # Collect a batch of images
+            for j in range(args.batch_size):
+                input_image = np.expand_dims(np.float32(cv2.cvtColor(cv2.imread(val_input_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]),axis=0)/255.0
+                input_image_batch.append(np.expand_dims(input_image, axis=0))
+                output_image = cv2.imread(val_output_names[ind],-1)[:args.crop_height, :args.crop_width]
+                output_image_batch.append(np.expand_dims(output_image, axis=0))
+            if args.batch_size == 1:
+                input_image_batch = input_image_batch[0]
+                output_image_batch = output_image_batch[0]
+            else:
+                input_image_batch = np.squeeze(np.stack(input_image_batch, axis=1))
+                output_image_batch = np.squeeze(np.stack(output_image_batch, axis=1))
+
+            inp_dict = feed_all_gpu({}, models, val_payload_per_gpu, input_image_batch, output_image_batch)
+            batch_pred,batch_y = sess.run([all_pred,all_y], inp_dict)
+            if preds is None:
+                preds = batch_pred
+            else:
+                preds = np.concatenate((preds, batch_pred), 0)
+            if ys is None:
+                ys = batch_y
+            else:
+                ys = np.concatenate((ys,batch_y),0)
+
+            for j in range(args.batch_size):
+                gt = ys[j]
+                output_image = np.array(batch_pred[j,:,:,:])
+                output_image = helpers.reverse_one_hot(output_image)
+                out_eval_image = output_image[:,:,0]
+                out_vis_image = helpers.colour_code_segmentation(output_image)
+
+                accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
+                class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes)
+                prec = utils.precision(out_eval_image, gt)
+                rec = utils.recall(out_eval_image, gt)
+                f1 = utils.f1score(out_eval_image, gt)
+                iou = utils.compute_mean_iou(out_eval_image, gt)
             
-            input_image = np.expand_dims(np.float32(cv2.cvtColor(cv2.imread(val_input_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]),axis=0)/255.0
-            gt = cv2.cvtColor(cv2.imread(val_output_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]
+                file_name = utils.filepath_to_name(val_input_names[ind])
+                target.write("%s, %f, %f, %f, %f, %f"%(file_name, accuracy, prec, rec, f1, iou))
+                for item in class_accuracies:
+                    target.write(", %f"%(item))
+                target.write("\n")
 
-            st = time.time()
-
-            output_image = sess.run(network,feed_dict={input:input_image})
-            
-
-            output_image = np.array(output_image[0,:,:,:])
-            output_image = helpers.reverse_one_hot(output_image)
-            out_eval_image = output_image[:,:,0]
-            out_vis_image = helpers.colour_code_segmentation(output_image)
-
-            accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
-            class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes)
-            prec = utils.precision(out_eval_image, gt)
-            rec = utils.recall(out_eval_image, gt)
-            f1 = utils.f1score(out_eval_image, gt)
-            iou = utils.compute_mean_iou(out_eval_image, gt)
-        
-            file_name = utils.filepath_to_name(val_input_names[ind])
-            target.write("%s, %f, %f, %f, %f, %f"%(file_name, accuracy, prec, rec, f1, iou))
-            for item in class_accuracies:
-                target.write(", %f"%(item))
-            target.write("\n")
-
-            scores_list.append(accuracy)
-            class_scores_list.append(class_accuracies)
-            precision_list.append(prec)
-            recall_list.append(rec)
-            f1_list.append(f1)
-            iou_list.append(iou)
-            
-            gt = helpers.reverse_one_hot(helpers.one_hot_it(gt))
-            gt = helpers.colour_code_segmentation(gt)
- 
-            file_name = os.path.basename(val_input_names[ind])
-            file_name = os.path.splitext(file_name)[0]
-            cv2.imwrite("checkpoints_#%d/%04d/%s_pred.png"%(args.exp_id,epoch, file_name),np.uint8(out_vis_image))
-            cv2.imwrite("checkpoints_#%d/%04d/%s_gt.png"%(args.exp_id,epoch, file_name),np.uint8(gt))
-
+                scores_list.append(accuracy)
+                class_scores_list.append(class_accuracies)
+                precision_list.append(prec)
+                recall_list.append(rec)
+                f1_list.append(f1)
+                iou_list.append(iou)
+                
+                gt = helpers.reverse_one_hot(helpers.one_hot_it(gt))
+                gt = helpers.colour_code_segmentation(gt)
+     
+                file_name = os.path.basename(val_input_names[ind])
+                file_name = os.path.splitext(file_name)[0]
+                cv2.imwrite("checkpoints_#%d/%04d/%s_pred.png"%(args.exp_id,epoch, file_name),np.uint8(out_vis_image))
+                cv2.imwrite("checkpoints_#%d/%04d/%s_gt.png"%(args.exp_id,epoch, file_name),np.uint8(gt))
 
         target.close()
 
@@ -467,7 +542,7 @@ else:
         output_image = sess.run(network,feed_dict={input:input_image})
         
 
-        gt = cv2.cvtColor(cv2.imread(test_output_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]
+        gt = cv2.imread(test_output_names[ind],-1)[:args.crop_height, :args.crop_width]
 
         output_image = np.array(output_image[0,:,:,:])
         output_image = helpers.reverse_one_hot(output_image)
