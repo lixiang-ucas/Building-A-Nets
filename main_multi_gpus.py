@@ -234,8 +234,8 @@ else:
     _, _, tower_preds, tower_losses, tower_grads = zip(*models)
 aver_loss_op = tf.reduce_mean(tower_losses)
 apply_gradient_op = opt.apply_gradients(average_gradients(tower_grads))
-all_pred = tf.stack(tower_preds, 0)
-# all_pred = tf.reshape(tf.stack(tower_preds, 0), [-1,num_classes])
+# all_pred = tf.stack(tower_preds, 0)
+all_pred = tf.reshape(tf.stack(tower_preds, 0), [-1, args.crop_width, args.crop_height, num_classes])
 print('reduce model on cpu done.')
 
 config = tf.ConfigProto()
@@ -302,7 +302,7 @@ if args.is_training:
         num_iters = int(np.floor(len(id_list) / args.batch_size))
         payload_per_gpu = args.batch_size/len(gpu_ids)
 
-        for i in range(num_iters)[:10]:
+        for i in range(num_iters)[:1]:
             st=time.time()
             
             input_image_batch = []
@@ -375,7 +375,6 @@ if args.is_training:
                     pixel_weight_batch = np.squeeze(np.stack(pixel_weight_batch, axis=1))
                     # pixel_weight_batch = np.expand_dims(pixel_weight_batch, axis=3)
 
-            print('pixel_weight_batch.shape:',pixel_weight_batch.shape)
             # Do the training
             if args.is_edge_weight:
                 inp_dict = feed_all_gpu(inp_dict, models, payload_per_gpu, input_image_batch, output_image_batch, pixel_weight_batch)
@@ -415,16 +414,16 @@ if args.is_training:
         f1_list = []
         iou_list = []
 
-
         # Do the validation on a small set of validation images
         total_batch = int(len(val_indices) / args.batch_size)
         val_payload_per_gpu = args.batch_size / len(gpu_ids)
-        for batch_idx in range(total_batch):
+        for i in range(total_batch):
             input_image_batch = []
             output_image_batch = []
             preds = None
             # Collect a batch of images
             for j in range(args.batch_size):
+                ind = i*args.batch_size+j
                 input_image = cv2.cvtColor(cv2.imread(val_input_names[ind],-1), cv2.COLOR_BGR2RGB)[:args.crop_height, :args.crop_width]/255.0
                 input_image_batch.append(np.expand_dims(input_image, axis=0))
                 output_image = cv2.imread(val_output_names[ind],-1)[:args.crop_height, :args.crop_width]
@@ -438,14 +437,17 @@ if args.is_training:
                 output_image_batch = np.squeeze(np.stack(output_image_batch, axis=1))
             inp_dict = feed_all_gpu({}, models, val_payload_per_gpu, input_image_batch, output_image_batch, None)
             batch_pred = sess.run([all_pred], inp_dict)
-            if preds is None:
-                preds = batch_pred
-            else:
-                preds = np.concatenate((preds, batch_pred), 0)
+            # if preds is None:
+            preds = batch_pred
+            preds = np.stack(preds).reshape((args.batch_size,args.crop_width, args.crop_height,num_classes))
+            print(len(preds),preds[j].shape)
+            # else:
+            #     preds = np.concatenate((preds, batch_pred), 0)
 
             for j in range(args.batch_size):
                 gt = output_image_batch[j,:,:,:]
-                output_image = np.squeeze(preds[j])
+                print(len(preds),preds[j].shape)
+                output_image = preds[j] #np.squeeze(preds[j])
                 output_image = helpers.reverse_one_hot(output_image)
                 gt = helpers.reverse_one_hot(gt)
                 out_vis_image = helpers.colour_code_segmentation(output_image)
