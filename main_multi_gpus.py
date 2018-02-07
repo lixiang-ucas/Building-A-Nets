@@ -440,14 +440,13 @@ if args.is_training:
             # if preds is None:
             preds = batch_pred
             preds = np.stack(preds).reshape((args.batch_size,args.crop_width, args.crop_height,num_classes))
-            print(len(preds),preds[j].shape)
+            print('preds.shape:',preds.shape)
             # else:
             #     preds = np.concatenate((preds, batch_pred), 0)
 
             for j in range(args.batch_size):
                 gt = output_image_batch[j,:,:,:]
-                print(len(preds),preds[j].shape)
-                output_image = preds[j] #np.squeeze(preds[j])
+                output_image = preds[j,:,:,:] #np.squeeze(preds[j])
                 output_image = helpers.reverse_one_hot(output_image)
                 gt = helpers.reverse_one_hot(gt)
                 out_vis_image = helpers.colour_code_segmentation(output_image)
