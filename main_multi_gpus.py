@@ -183,7 +183,7 @@ for gpu_id in gpu_ids:
             input = tf.placeholder(tf.float32,shape=[None,None,None,3])
             output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
             if args.is_balanced_weight or args.is_edge_weight:
-                weight = tf.placeholder(tf.float32,shape=[None,None,None,1])
+                weight = tf.placeholder(tf.float32,shape=[None,None,None])
 
             if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
                 if args.is_BC:
@@ -214,9 +214,9 @@ for gpu_id in gpu_ids:
             if args.is_balanced_weight:
                 pixel_weight = b_weight*tf.argmax(input=output,dimension=3)+tf.argmin(input=output,dimension=3)
                 pixel_weight = tf.cast(pixel_weight, tf.float32)
-                loss = tf.reduce_mean(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+                loss = tf.reduce_mean(tf.multiply(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)))
             elif args.is_edge_weight:
-                loss = tf.reduce_mean(weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+                loss = tf.reduce_mean(tf.multiply(weight,tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)))
             else:
                 loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
                 
@@ -373,15 +373,15 @@ if args.is_training:
                 output_image_batch = np.squeeze(np.stack(output_image_batch, axis=1))
                 if args.is_edge_weight:
                     pixel_weight_batch = np.squeeze(np.stack(pixel_weight_batch, axis=1))
-                    pixel_weight_batch = np.expand_dims(pixel_weight_batch, axis=3)
+                    # pixel_weight_batch = np.expand_dims(pixel_weight_batch, axis=3)
 
+            print('pixel_weight_batch.shape:',pixel_weight_batch.shape)
             # Do the training
             if args.is_edge_weight:
                 inp_dict = feed_all_gpu(inp_dict, models, payload_per_gpu, input_image_batch, output_image_batch, pixel_weight_batch)
-                _, current = sess.run([apply_gradient_op, aver_loss_op], inp_dict)
             else:
                 inp_dict = feed_all_gpu(inp_dict, models, payload_per_gpu, input_image_batch, output_image_batch, None)
-                _, current = sess.run([apply_gradient_op, aver_loss_op], inp_dict)
+            _, current = sess.run([apply_gradient_op, aver_loss_op], inp_dict)
 
             current_losses.append(current)
             cnt = cnt + args.batch_size

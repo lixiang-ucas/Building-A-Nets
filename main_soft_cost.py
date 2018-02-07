@@ -129,7 +129,7 @@ with tf.device('/gpu:'+str(args.gpu)):
     input = tf.placeholder(tf.float32,shape=[None,None,None,3])
     output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
     if args.is_balanced_weight or args.is_edge_weight:
-        weight = tf.placeholder(tf.float32,shape=[None,None,None,1])
+        weight = tf.placeholder(tf.float32,shape=[None,None,None])
 
     if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
         if args.is_BC:
@@ -201,7 +201,7 @@ if args.is_training:
     print("Num Epochs -->", args.num_epochs)
     print("Batch Size -->", args.batch_size)
     print("exp_id -->", args.exp_id)
-    print("gpu_ids>", args.gpu_ids)
+    print("gpu_ids>", args.gpu)
     print("is_BC -->", args.is_BC)
     print("is_balanced_weight -->", args.is_balanced_weight)
     print("is_edge_weight -->", args.is_edge_weight)
@@ -301,7 +301,6 @@ if args.is_training:
                 output_image_batch = np.squeeze(np.stack(output_image_batch, axis=1))
                 if args.is_edge_weight:
                     pixel_weight_batch = np.squeeze(np.stack(pixel_weight_batch, axis=1))
-                    pixel_weight_batch = np.expand_dims(pixel_weight_batch, axis=3)
 
             # Do the training
             if args.is_edge_weight:

@@ -72,8 +72,8 @@ nohup python main23.py --exp_id 23 --gpu 1> log_#23.txt
 nohup python main_soft_cost.py --exp_id 41 --dataset './data/AerialImageDataset/patches256' --model 'FC-DenseNet158' --is_BC 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --num_epochs 200 --gpu 0
 
 
-
-nohup python main_multi_gpus.py --exp_id 42 --dataset './data/mass_buildings/patches256' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --num_val_images 100 --gpu_ids 1 --batch_size 2 > log_#22.txt
+#24
+nohup python main_multi_gpus.py --exp_id 24 --dataset './data/mass_buildings/patches256' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --num_val_images 100 --gpu_ids 1 --batch_size 2 > log_#24.txt
 
 
 #
