@@ -123,13 +123,18 @@ def average_gradients(tower_grads):
         average_grads.append(grad_and_var)
     return average_grads
 
-def feed_all_gpu(inp_dict, models, payload_per_gpu, batch_x, batch_y):
+def feed_all_gpu(inp_dict, models, payload_per_gpu, batch_x, batch_y, batch_w):
     for i in range(len(models)):
-        input, output, _, _, _ = models[i]
+        if args.is_edge_weight:
+            input, output, weight, _, _, _ = models[i]
+        else:
+            input, output, _, _, _ = models[i]
         start_pos = i * payload_per_gpu
         stop_pos = (i + 1) * payload_per_gpu
         inp_dict[input] = batch_x[start_pos:stop_pos]
         inp_dict[output] = batch_y[start_pos:stop_pos]
+        if ((args.is_edge_weight) and (weight is not None)):
+            inp_dict[weight] = batch_w[start_pos:stop_pos]
     return inp_dict
 
 # Check if model is available
@@ -216,11 +221,14 @@ for gpu_id in gpu_ids:
                 loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
                 
             grads = opt.compute_gradients(loss)
-            models.append((input,output,network,loss,grads))
+            if args.is_edge_weight:
+                models.append((input,output,weight,network,loss,grads))
+            else:
+                models.append((input,output,network,loss,grads))
 
 print('build model on gpu tower done.')
 print('reduce model on cpu...')
-tower_x, tower_y, tower_preds, tower_losses, tower_grads = zip(*models)
+tower_x, tower_y, _, tower_preds, tower_losses, tower_grads = zip(*models)
 aver_loss_op = tf.reduce_mean(tower_losses)
 apply_gradient_op = opt.apply_gradients(average_gradients(tower_grads))
 all_y = tf.reshape(tf.stack(tower_y, 0), [-1,num_classes])
@@ -249,9 +257,10 @@ if args.continue_training or not args.is_training:
 avg_scores_per_epoch = []
 
 if args.is_training:
-
-    print("***** Begin training *****")
     f = open('loss_#%d.txt' % (args.exp_id),'w')
+    print("***** Begin training *****")
+    print("exp_id -->", args.exp_id)
+    print("gpu_ids>", args.gpu_ids)
     print('loss wirte to loss_#%d.txt' % (args.exp_id))
     print("Dataset -->", args.dataset)
     print("Model -->", args.model)
@@ -259,8 +268,8 @@ if args.is_training:
     print("Crop Width -->", args.crop_width)
     print("Num Epochs -->", args.num_epochs)
     print("Batch Size -->", args.batch_size)
-    print("exp_id -->", args.exp_id)
-    print("gpu_ids>", args.gpu_ids)
+    
+    
     print("is_BC -->", args.is_BC)
     print("is_balanced_weight -->", args.is_balanced_weight)
     print("is_edge_weight -->", args.is_edge_weight)
@@ -292,7 +301,7 @@ if args.is_training:
         num_iters = int(np.floor(len(id_list) / args.batch_size))
         payload_per_gpu = args.batch_size/len(gpu_ids)
 
-        for i in range(num_iters):
+        for i in range(num_iters)[:10]:
             st=time.time()
             
             input_image_batch = []
@@ -366,11 +375,12 @@ if args.is_training:
 
             # Do the training
             if args.is_edge_weight:
-                _,current=sess.run([apply_gradient_op, aver_loss_op],feed_dict={input:input_image_batch,weight:pixel_weight_batch, output:output_image_batch})
-            else:
-                inp_dict = feed_all_gpu(inp_dict, models, payload_per_gpu, input_image_batch, output_image_batch)
+                inp_dict = feed_all_gpu(inp_dict, models, payload_per_gpu, input_image_batch, output_image_batch, pixel_weight_batch)
                 _, current = sess.run([apply_gradient_op, aver_loss_op], inp_dict)
-                # _,current=sess.run([apply_gradient_op, aver_loss_op],feed_dict={input:input_image_batch, output:output_image_batch})
+            else:
+                inp_dict = feed_all_gpu(inp_dict, models, payload_per_gpu, input_image_batch, output_image_batch, None)
+                _, current = sess.run([apply_gradient_op, aver_loss_op], inp_dict)
+
             current_losses.append(current)
             cnt = cnt + args.batch_size
             if cnt % 20 == 0:
@@ -406,6 +416,7 @@ if args.is_training:
 
         # Do the validation on a small set of validation images
         total_batch = int(len(val_indices) / args.batch_size)
+        val_payload_per_gpu = args.batch_size / len(gpu_ids)
         for batch_idx in range(total_batch):
             input_image_batch = []
             output_image_batch = []

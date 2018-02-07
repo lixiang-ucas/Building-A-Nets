@@ -301,6 +301,7 @@ if args.is_training:
                 output_image_batch = np.squeeze(np.stack(output_image_batch, axis=1))
                 if args.is_edge_weight:
                     pixel_weight_batch = np.squeeze(np.stack(pixel_weight_batch, axis=1))
+                    pixel_weight_batch = np.expand_dims(pixel_weight_batch, axis=3)
 
             # Do the training
             if args.is_edge_weight:
@@ -349,19 +350,16 @@ if args.is_training:
             st = time.time()
 
             output_image = sess.run(network,feed_dict={input:input_image})
-            
-
             output_image = np.array(output_image[0,:,:,:])
             output_image = helpers.reverse_one_hot(output_image)
-            out_eval_image = output_image[:,:,0]
             out_vis_image = helpers.colour_code_segmentation(output_image)
 
-            accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
-            class_accuracies = utils.compute_class_accuracies(out_eval_image, gt, num_classes)
-            prec = utils.precision(out_eval_image, gt)
-            rec = utils.recall(out_eval_image, gt)
-            f1 = utils.f1score(out_eval_image, gt)
-            iou = utils.compute_mean_iou(out_eval_image, gt)
+            accuracy = utils.compute_avg_accuracy(output_image, gt)
+            class_accuracies = utils.compute_class_accuracies(output_image, gt, num_classes)
+            prec = utils.precision(output_image, gt)
+            rec = utils.recall(output_image, gt)
+            f1 = utils.f1score(output_image, gt)
+            iou = utils.compute_mean_iou(output_image, gt)
         
             file_name = utils.filepath_to_name(val_input_names[ind])
             target.write("%s, %f, %f, %f, %f, %f"%(file_name, accuracy, prec, rec, f1, iou))
@@ -461,15 +459,15 @@ else:
 
         output_image = np.array(output_image[0,:,:,:])
         output_image = helpers.reverse_one_hot(output_image)
-        out_eval_image = output_image[:,:,0]
+        output_image = output_image[:,:,0]
         out_vis_image = helpers.colour_code_segmentation(output_image)
 
-        accuracy = utils.compute_avg_accuracy(out_eval_image, gt)
-        class_accuracies = utils.compute_class_accuracies(out_eval_image, gt)
-        prec = utils.precision(out_eval_image, gt)
-        rec = utils.recall(out_eval_image, gt)
-        f1 = utils.f1score(out_eval_image, gt)
-        iou = utils.compute_mean_iou(out_eval_image, gt)
+        accuracy = utils.compute_avg_accuracy(output_image, gt)
+        class_accuracies = utils.compute_class_accuracies(output_image, gt)
+        prec = utils.precision(output_image, gt)
+        rec = utils.recall(output_image, gt)
+        f1 = utils.f1score(output_image, gt)
+        iou = utils.compute_mean_iou(output_image, gt)
     
         file_name = utils.filepath_to_name(test_input_names[ind])
         target.write("%s, %f, %f, %f, %f, %f"%(file_name, accuracy, prec, rec, f1, iou))
