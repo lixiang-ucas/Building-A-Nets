@@ -16,6 +16,9 @@ import utils
 
 import matplotlib.pyplot as plt
 
+os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
+os.environ['CUDA_VISIBLE_DEVICES']='2,3,4'
+
 sys.path.append("models")
 from FC_DenseNet_Tiramisu import build_fc_densenet
 from Encoder_Decoder import build_encoder_decoder

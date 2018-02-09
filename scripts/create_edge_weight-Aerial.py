@@ -55,7 +55,7 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
         _, binary = cv.threshold(map_im, 50, 255, cv.THRESH_BINARY)
         canny = cv.Canny(binary, 60, 0, apertureSize = 3)
         _,contours,_ = cv.findContours(canny, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        blank = np.ones((1500,1500))
+        blank = np.ones((5000,5000))
         cv.drawContours(blank, contours, -1, 5, 1)
         pixel_weight = blank+2*(binary/255)
         # cv.imwrite('blank.png',blank*20)
@@ -72,8 +72,8 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
                 map_patch = np.copy(map_im[y:y + sat_size, x:x + sat_size])
                 pw_patch = np.copy(pixel_weight[y:y + sat_size, x:x + sat_size])
                 # exclude patch including big white region
-                if np.sum(np.sum(sat_patch, axis=2) == (255 * 3)) > 40:
-                    continue
+                #if np.sum(np.sum(sat_patch, axis=2) == (255 * 3)) > 40:
+                #    continue
 
                 #print sat_out_dir+os.path.basename(sat_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', sat_patch.shape
                 cv.imwrite(sat_out_dir+os.path.basename(sat_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', sat_patch)
@@ -88,18 +88,18 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
 
 if __name__ == '__main__':
     create_patches(256, 256, 256, 1,
-             args.dataset+'/mass_buildings/train/sat',
-             args.dataset+'/mass_buildings/train/map',
-             args.dataset+'/mass_buildings/patches256-2/train/',
-             args.dataset+'/mass_buildings/patches256-2/train_labels/',
-             args.dataset+'/mass_buildings/patches256-2/train_labels_weights/')
-    # create_patches(256, 256, 64, 1,
-    #                  args.dataset+'/mass_buildings/valid/sat',
-    #                  args.dataset+'/mass_buildings/valid/map',
-    #                  args.dataset+'/mass_buildings/patches256/val/',
-    #                  args.dataset+'/mass_buildings/patches256/val_labels/')
-    # create_patches(256, 256, 64, 1,
-    #              args.dataset+'/mass_buildings/test/sat',
-    #              args.dataset+'/mass_buildings/test/map',
-    #              args.dataset+'/mass_buildings/patches256/test/',
-    #              args.dataset+'/mass_buildings/patches256/test_labels/')
+             args.dataset+'/AerialImageDataset/train/images',
+             args.dataset+'/AerialImageDataset/train/gt',
+             args.dataset+'/AerialImageDataset/patches256/train/',
+             args.dataset+'/AerialImageDataset/patches256/train_labels/',
+             args.dataset+'/AerialImageDataset/patches256/train_labels_weights/')
+    # create_patches(256, 256, 256, 1,
+    #                  args.dataset+'/AerialImageDataset/valid/sat',
+    #                  args.dataset+'/AerialImageDataset/valid/map',
+    #                  args.dataset+'/AerialImageDataset/patches256/val/',
+    #                  args.dataset+'/AerialImageDataset/patches256/val_labels/')
+    # create_patches(256, 256, 256, 1,
+    #              args.dataset+'/AerialImageDataset/test/sat',
+    #              args.dataset+'/AerialImageDataset/test/map',
+    #              args.dataset+'/AerialImageDataset/patches256/test/',
+    #              args.dataset+'/AerialImageDataset/patches256/test_labels/')

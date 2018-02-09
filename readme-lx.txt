@@ -1,2 +1,4 @@
+main_soft_cost.py使用单GPU训练，main_multi_gpus使用多GPU训练
+run_prediction.py预测二类问题，概率替换，计算breakeven value；inference.py预测多累，概率平均
 Camvid数据集使用helper.py,Massachutters数据集使用helper2.py,ISPRS数据集使用helper3.py
 utils中random_crop函数包含pixel_weight, 且median_frequency_balancing函数返回cls_freq，utils2不包含
