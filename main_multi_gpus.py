@@ -253,7 +253,6 @@ else:
     _, _, tower_preds, tower_losses, tower_grads = zip(*models)
 aver_loss_op = tf.reduce_mean(tower_losses)
 apply_gradient_op = opt.apply_gradients(average_gradients(tower_grads))
-# all_pred = tf.stack(tower_preds, 0)
 all_pred = tf.reshape(tf.stack(tower_preds, 0), [-1, args.crop_width, args.crop_height, num_classes])
 print('reduce model on cpu done.')
 
