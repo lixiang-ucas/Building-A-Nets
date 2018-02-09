@@ -129,7 +129,7 @@ with tf.device('/gpu:'+str(args.gpu)):
     input = tf.placeholder(tf.float32,shape=[None,None,None,3])
     output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
     if args.is_balanced_weight or args.is_edge_weight:
-        weight = tf.placeholder(tf.float32,shape=[None,None,None,1])
+        weight = tf.placeholder(tf.float32,shape=[None,None,None])
 
     if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
         if args.is_BC:
