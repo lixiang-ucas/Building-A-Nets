@@ -107,14 +107,32 @@ def average_losses(loss):
     return total_loss
 
 def average_gradients(tower_grads):
+    """Calculate the average gradient for each shared variable across all towers.
+    Note that this function provides a synchronization point across all towers.
+    Args:
+    tower_grads: List of lists of (gradient, variable) tuples. The outer list
+    is over individual gradients. The inner list is over the gradient
+    calculation for each tower.
+    Returns:
+    List of pairs of (gradient, variable) where the gradient has been averaged
+    across all towers.
+    """
     average_grads = []
     for grad_and_vars in zip(*tower_grads):
         # Note that each grad_and_vars looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-        grads = [g for g, _ in grad_and_vars]
+        grads = []
+        for g, _ in grad_and_vars:
+            # Add 0 dimension to the gradients to represent the tower.
+            expanded_g = tf.expand_dims(g, 0)
+
+            # Append on a 'tower' dimension which we will average over below.
+            grads.append(expanded_g)
+
         # Average over the 'tower' dimension.
-        grad = tf.stack(grads, 0)
+        grad = tf.concat(axis=0, values=grads)
         grad = tf.reduce_mean(grad, 0)
+
         # Keep in mind that the Variables are redundant because they are shared
         # across towers. So .. we will just return the first tower's pointer to
         # the Variable.
@@ -180,51 +198,52 @@ for gpu_id in gpu_ids:
     with tf.device('/gpu:%d' % gpu_id):
         print('using tower:%d...'% gpu_id)
         with tf.name_scope('tower_%d' % gpu_id):
-            input = tf.placeholder(tf.float32,shape=[None,None,None,3])
-            output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
-            if args.is_balanced_weight or args.is_edge_weight:
-                weight = tf.placeholder(tf.float32,shape=[None,None,None])
+            with tf.variable_scope('gpu_variables', reuse=gpu_id>0):
+                input = tf.placeholder(tf.float32,shape=[None,None,None,3])
+                output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
+                if args.is_balanced_weight or args.is_edge_weight:
+                    weight = tf.placeholder(tf.float32,shape=[None,None,None])
 
-            if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
-                if args.is_BC:
-                    network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=1, compression_rate=0.5)
+                if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
+                    if args.is_BC:
+                        network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=1, compression_rate=0.5)
+                    else:
+                        network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=False, compression_rate=1)
+                elif args.model == "RefineNet-Res50" or args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
+                    # RefineNet requires pre-trained ResNet weights
+                    network, init_fn = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
+                elif args.model == "FRRN-A" or args.model == "FRRN-B":
+                    network = build_frrn(input, preset_model = args.model, num_classes=num_classes)
+                elif args.model == "Encoder-Decoder" or args.model == "Encoder-Decoder-Skip":
+                    network = build_encoder_decoder(input, preset_model = args.model, num_classes=num_classes)
+                elif args.model == "MobileUNet" or args.model == "MobileUNet-Skip":
+                    network = build_mobile_unet(input, preset_model = args.model, num_classes=num_classes)
+                elif args.model == "PSPNet-Res50" or args.model == "PSPNet-Res101" or args.model == "PSPNet-Res152":
+                    # Image size is required for PSPNet
+                    # PSPNet requires pre-trained ResNet weights
+                    network, init_fn = build_pspnet(input, label_size=[args.crop_height, args.crop_width], preset_model = args.model, num_classes=num_classes)
+                elif args.model == "GCN-Res50" or args.model == "GCN-Res101" or args.model == "GCN-Res152":
+                    network, init_fn = build_gcn(input, preset_model = args.model, num_classes=num_classes)
+                elif args.model == "custom":
+                    network = build_custom(input, num_classes) 
                 else:
-                    network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=False, compression_rate=1)
-            elif args.model == "RefineNet-Res50" or args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
-                # RefineNet requires pre-trained ResNet weights
-                network, init_fn = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
-            elif args.model == "FRRN-A" or args.model == "FRRN-B":
-                network = build_frrn(input, preset_model = args.model, num_classes=num_classes)
-            elif args.model == "Encoder-Decoder" or args.model == "Encoder-Decoder-Skip":
-                network = build_encoder_decoder(input, preset_model = args.model, num_classes=num_classes)
-            elif args.model == "MobileUNet" or args.model == "MobileUNet-Skip":
-                network = build_mobile_unet(input, preset_model = args.model, num_classes=num_classes)
-            elif args.model == "PSPNet-Res50" or args.model == "PSPNet-Res101" or args.model == "PSPNet-Res152":
-                # Image size is required for PSPNet
-                # PSPNet requires pre-trained ResNet weights
-                network, init_fn = build_pspnet(input, label_size=[args.crop_height, args.crop_width], preset_model = args.model, num_classes=num_classes)
-            elif args.model == "GCN-Res50" or args.model == "GCN-Res101" or args.model == "GCN-Res152":
-                network, init_fn = build_gcn(input, preset_model = args.model, num_classes=num_classes)
-            elif args.model == "custom":
-                network = build_custom(input, num_classes) 
-            else:
-                raise ValueError("Error: the model %d is not available. Try checking which models are available using the command python main.py --help")
+                    raise ValueError("Error: the model %d is not available. Try checking which models are available using the command python main.py --help")
 
-            # Compute your (unweighted) softmax cross entropy loss
-            if args.is_balanced_weight:
-                pixel_weight = b_weight*tf.argmax(input=output,dimension=3)+tf.argmin(input=output,dimension=3)
-                pixel_weight = tf.cast(pixel_weight, tf.float32)
-                loss = tf.reduce_mean(tf.multiply(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)))
-            elif args.is_edge_weight:
-                loss = tf.reduce_mean(tf.multiply(weight,tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)))
-            else:
-                loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
-                
-            grads = opt.compute_gradients(loss)
-            if args.is_edge_weight:
-                models.append((input,output,weight,network,loss,grads))
-            else:
-                models.append((input,output,network,loss,grads))
+                # Compute your (unweighted) softmax cross entropy loss
+                if args.is_balanced_weight:
+                    pixel_weight = b_weight*tf.argmax(input=output,dimension=3)+tf.argmin(input=output,dimension=3)
+                    pixel_weight = tf.cast(pixel_weight, tf.float32)
+                    loss = tf.reduce_mean(tf.multiply(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)))
+                elif args.is_edge_weight:
+                    loss = tf.reduce_mean(tf.multiply(weight,tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output)))
+                else:
+                    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+                    
+                grads = opt.compute_gradients(loss)
+                if args.is_edge_weight:
+                    models.append((input,output,weight,network,loss,grads))
+                else:
+                    models.append((input,output,network,loss,grads))
 
 print('build model on gpu tower done.')
 print('reduce model on cpu...')
@@ -302,7 +321,7 @@ if args.is_training:
         num_iters = int(np.floor(len(id_list) / args.batch_size))
         payload_per_gpu = args.batch_size/len(gpu_ids)
 
-        for i in range(num_iters)[:1]:
+        for i in range(num_iters):
             st=time.time()
             
             input_image_batch = []
@@ -361,7 +380,7 @@ if args.is_training:
                 input_image_batch.append(np.expand_dims(input_image, axis=0))
                 output_image_batch.append(np.expand_dims(output_image, axis=0))
                 if args.is_edge_weight:
-                    pixel_weight_batch.append(pixel_weight[np.newaxis,:,:,np.newaxis])
+                    pixel_weight_batch.append(pixel_weight[np.newaxis,:,:])
 
             if args.batch_size == 1:
                 input_image_batch = input_image_batch[0]
@@ -440,10 +459,7 @@ if args.is_training:
             # if preds is None:
             preds = batch_pred
             preds = np.stack(preds).reshape((args.batch_size,args.crop_width, args.crop_height,num_classes))
-            print('preds.shape:',preds.shape)
-            # else:
-            #     preds = np.concatenate((preds, batch_pred), 0)
-
+            # print('preds.shape:',preds.shape)
             for j in range(args.batch_size):
                 gt = output_image_batch[j,:,:,:]
                 output_image = preds[j,:,:,:] #np.squeeze(preds[j])
