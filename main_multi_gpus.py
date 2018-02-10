@@ -17,7 +17,7 @@ import utils
 import matplotlib.pyplot as plt
 
 os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DEVICES']='2,3,4'
+os.environ['CUDA_VISIBLE_DEVICES']='3,4'
 
 sys.path.append("models")
 from FC_DenseNet_Tiramisu import build_fc_densenet
@@ -259,12 +259,29 @@ apply_gradient_op = opt.apply_gradients(average_gradients(tower_grads))
 all_pred = tf.reshape(tf.stack(tower_preds, 0), [-1, args.crop_width, args.crop_height, num_classes])
 print('reduce model on cpu done.')
 
-config = tf.ConfigProto()
+##################
+#config
+##################
+config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True
 sess=tf.Session(config=config)
-
 saver=tf.train.Saver(max_to_keep=1000)
 sess.run(tf.global_variables_initializer())
+
+##################
+#summary
+##################
+# Add histograms for gradients.
+for grad, var in tower_grads:
+    if grad is not None:
+        summaries.append(tf.summary.histogram(var.op.name + '/gradients', grad))
+# Add histograms for trainable variables.
+for var in tf.trainable_variables():
+    summaries.append(tf.summary.histogram(var.op.name, var))
+tf.summary.scalar('loss', aver_loss_op)
+summary_op = tf.summary.merge_all()
+train_writer = tf.summary.FileWriter('./train%d' % exp_id, sess.graph)
+
 
 utils.count_params()
 
@@ -305,6 +322,7 @@ if args.is_training:
     print("")
 
     avg_loss_per_epoch = []
+    it = 0 #NO. iteration
 
     # Which validation images doe we want
     val_indices = []
@@ -402,7 +420,13 @@ if args.is_training:
             else:
                 inp_dict = feed_all_gpu(inp_dict, models, payload_per_gpu, input_image_batch, output_image_batch, None)
             _, current = sess.run([apply_gradient_op, aver_loss_op], inp_dict)
-
+            if it % 10 == 0:
+                if args.is_edge_weight:
+                    summary_str = sess.run(summary_op,feed_dict={input:input_image_batch,weight:pixel_weight_batch, output:output_image_batch})
+                else:
+                    summary_str = sess.run(summary_op,feed_dict={input:input_image_batch, output:output_image_batch})
+                train_writer.add_summary(summary_str, it)
+            it+=1
             current_losses.append(current)
             cnt = cnt + args.batch_size
             if cnt % 20 == 0:

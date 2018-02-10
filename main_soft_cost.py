@@ -15,6 +15,8 @@ import helpers
 import utils 
 
 import matplotlib.pyplot as plt
+os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 
 sys.path.append("models")
 from FC_DenseNet_Tiramisu import build_fc_densenet
@@ -36,7 +38,6 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--exp_id', type=int, default=1, help='Number of experiments')
 parser.add_argument('--num_epochs', type=int, default=300, help='Number of epochs to train for')
 parser.add_argument('--is_training', type=str2bool, default=True, help='Whether we are training or testing')
 parser.add_argument('--continue_training', type=str2bool, default=False, help='Whether to continue training from a checkpoint')
@@ -51,7 +52,8 @@ parser.add_argument('--brightness', type=float, default=None, help='Whether to r
 parser.add_argument('--rotation', type=float, default=None, help='Whether to randomly rotate the image for data augmentation')
 parser.add_argument('--zoom', type=float, default=None, help='Whether to randomly zoom in for data augmentation')
 parser.add_argument('--model', type=str, default="FC-DenseNet103", help='The model you are using. Currently supports: FC-DenseNet56, FC-DenseNet67, FC-DenseNet103, FC-DenseNet158, FC-DenseNet232, HF-FCN, Encoder-Decoder, Encoder-Decoder-Skip, RefineNet-Res50, RefineNet-Res101, RefineNet-Res152, FRRN-A, FRRN-B, MobileUNet, MobileUNet-Skip, PSPNet-Res50, PSPNet-Res101, PSPNet-Res152, GCN-Res50, GCN-Res101, GCN-Res152, custom')
-parser.add_argument('--gpu', type=int, default=0, help='Set GPU device id')
+parser.add_argument('--exp_id', type=int, default=1, help='Number of experiments')
+parser.add_argument('--gpu_ids', type=int, default=0, help='Set GPU device id')
 parser.add_argument('--is_BC', type=str2bool, default=False, help='whegher to use balanced weight')
 parser.add_argument('--is_balanced_weight', type=str2bool, default=False, help='whegher to use balanced weight')
 parser.add_argument('--is_edge_weight', type=str2bool, default=False, help='whegher to use balanced weight')
@@ -125,56 +127,70 @@ if args.is_balanced_weight:
 network = None
 init_fn = None
 print("Preparing the model ...")
-with tf.device('/gpu:'+str(args.gpu)):
-    input = tf.placeholder(tf.float32,shape=[None,None,None,3])
-    output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
-    if args.is_balanced_weight or args.is_edge_weight:
-        weight = tf.placeholder(tf.float32,shape=[None,None,None])
+with tf.device('/gpu:'+str(args.gpu_ids)):
+    with tf.name_scope('tower_%d' % args.gpu_ids) as scope:
+        input = tf.placeholder(tf.float32,shape=[None,None,None,3],name='input')
+        output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes],name='output')
+        if args.is_balanced_weight or args.is_edge_weight:
+            weight = tf.placeholder(tf.float32,shape=[None,None,None],name='weight')
 
-    if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
-        if args.is_BC:
-            network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=1, compression_rate=0.5)
+        if args.model == "FC-DenseNet56" or args.model == "FC-DenseNet67" or args.model == "FC-DenseNet103" or args.model == "FC-DenseNet158" or args.model == "FC-DenseNet232":
+            if args.is_BC:
+                network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=1, compression_rate=0.5)
+            else:
+                network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=False, compression_rate=1)
+        elif args.model == "RefineNet-Res50" or args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
+            # RefineNet requires pre-trained ResNet weights
+            network, init_fn = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
+        elif args.model == "FRRN-A" or args.model == "FRRN-B":
+            network = build_frrn(input, preset_model = args.model, num_classes=num_classes)
+        elif args.model == "Encoder-Decoder" or args.model == "Encoder-Decoder-Skip":
+            network = build_encoder_decoder(input, preset_model = args.model, num_classes=num_classes)
+        elif args.model == "MobileUNet" or args.model == "MobileUNet-Skip":
+            network = build_mobile_unet(input, preset_model = args.model, num_classes=num_classes)
+        elif args.model == "PSPNet-Res50" or args.model == "PSPNet-Res101" or args.model == "PSPNet-Res152":
+            # Image size is required for PSPNet
+            # PSPNet requires pre-trained ResNet weights
+            network, init_fn = build_pspnet(input, label_size=[args.crop_height, args.crop_width], preset_model = args.model, num_classes=num_classes)
+        elif args.model == "GCN-Res50" or args.model == "GCN-Res101" or args.model == "GCN-Res152":
+            network, init_fn = build_gcn(input, preset_model = args.model, num_classes=num_classes)
+        elif args.model == "custom":
+            network = build_custom(input, num_classes) 
         else:
-            network = build_fc_densenet(input, preset_model = args.model, num_classes=num_classes, is_bottneck=False, compression_rate=1)
-    elif args.model == "RefineNet-Res50" or args.model == "RefineNet-Res101" or args.model == "RefineNet-Res152":
-        # RefineNet requires pre-trained ResNet weights
-        network, init_fn = build_refinenet(input, preset_model = args.model, num_classes=num_classes)
-    elif args.model == "FRRN-A" or args.model == "FRRN-B":
-        network = build_frrn(input, preset_model = args.model, num_classes=num_classes)
-    elif args.model == "Encoder-Decoder" or args.model == "Encoder-Decoder-Skip":
-        network = build_encoder_decoder(input, preset_model = args.model, num_classes=num_classes)
-    elif args.model == "MobileUNet" or args.model == "MobileUNet-Skip":
-        network = build_mobile_unet(input, preset_model = args.model, num_classes=num_classes)
-    elif args.model == "PSPNet-Res50" or args.model == "PSPNet-Res101" or args.model == "PSPNet-Res152":
-        # Image size is required for PSPNet
-        # PSPNet requires pre-trained ResNet weights
-        network, init_fn = build_pspnet(input, label_size=[args.crop_height, args.crop_width], preset_model = args.model, num_classes=num_classes)
-    elif args.model == "GCN-Res50" or args.model == "GCN-Res101" or args.model == "GCN-Res152":
-        network, init_fn = build_gcn(input, preset_model = args.model, num_classes=num_classes)
-    elif args.model == "custom":
-        network = build_custom(input, num_classes) 
-    else:
-        raise ValueError("Error: the model %d is not available. Try checking which models are available using the command python main.py --help")
+            raise ValueError("Error: the model %d is not available. Try checking which models are available using the command python main.py --help")
 
-    # Compute your (unweighted) softmax cross entropy loss
-    if args.is_balanced_weight:
-        pixel_weight = b_weight*tf.argmax(input=output,dimension=3)+tf.argmin(input=output,dimension=3)
-        pixel_weight = tf.cast(pixel_weight, tf.float32)
-        loss = tf.reduce_mean(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
-    elif args.is_edge_weight:
-        loss = tf.reduce_mean(weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
-    else:
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
-        
-    opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
-
-config = tf.ConfigProto()
+        # Compute your (unweighted) softmax cross entropy loss
+        if args.is_balanced_weight:
+            pixel_weight = b_weight*tf.argmax(input=output,dimension=3)+tf.argmin(input=output,dimension=3)
+            pixel_weight = tf.cast(pixel_weight, tf.float32)
+            loss = tf.reduce_mean(pixel_weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+        elif args.is_edge_weight:
+            loss = tf.reduce_mean(weight*tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+        else:
+            loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=network, labels=output))
+            
+        opt = tf.train.RMSPropOptimizer(learning_rate=0.001, decay=0.995).minimize(loss, var_list=[var for var in tf.trainable_variables()])
+        # Retain the summaries from the final tower.
+        summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
+print("Building model done")
+##################
+#config
+##################
+config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True
 sess=tf.Session(config=config)
-
 saver=tf.train.Saver(max_to_keep=1000)
 sess.run(tf.global_variables_initializer())
 
+##################
+#summary
+##################
+# Add histograms for trainable variables.
+for var in tf.trainable_variables():
+    summaries.append(tf.summary.histogram(var.op.name, var))
+tf.summary.scalar('loss', loss)
+summary_op = tf.summary.merge_all()
+train_writer = tf.summary.FileWriter('./train%d' % args.exp_id, sess.graph)
 utils.count_params()
 
 # If a pre-trained ResNet is required, load the weights.
@@ -189,6 +205,8 @@ if args.continue_training or not args.is_training:
 
 avg_scores_per_epoch = []
 
+print("Config model done")
+
 if args.is_training:
 
     print("***** Begin training *****")
@@ -201,7 +219,7 @@ if args.is_training:
     print("Num Epochs -->", args.num_epochs)
     print("Batch Size -->", args.batch_size)
     print("exp_id -->", args.exp_id)
-    print("gpu_ids>", args.gpu)
+    print("gpu_ids>", args.gpu_ids)
     print("is_BC -->", args.is_BC)
     print("is_balanced_weight -->", args.is_balanced_weight)
     print("is_edge_weight -->", args.is_edge_weight)
@@ -215,6 +233,7 @@ if args.is_training:
     print("")
 
     avg_loss_per_epoch = []
+    it = 0
 
     # Which validation images doe we want
     val_indices = []
@@ -308,6 +327,13 @@ if args.is_training:
                 _,current=sess.run([opt,loss],feed_dict={input:input_image_batch,weight:pixel_weight_batch, output:output_image_batch})
             else:
                 _,current=sess.run([opt,loss],feed_dict={input:input_image_batch, output:output_image_batch})
+            if it % 10 == 0:
+                if args.is_edge_weight:
+                    summary_str = sess.run(summary_op,feed_dict={input:input_image_batch,weight:pixel_weight_batch, output:output_image_batch})
+                else:
+                    summary_str = sess.run(summary_op,feed_dict={input:input_image_batch, output:output_image_batch})
+                train_writer.add_summary(summary_str, it)
+            it+=1
             current_losses.append(current)
             cnt = cnt + args.batch_size
             if cnt % 20 == 0:
