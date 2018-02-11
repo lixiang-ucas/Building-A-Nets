@@ -282,7 +282,7 @@ for var in tf.trainable_variables():
     summaries.append(tf.summary.histogram(var.op.name, var))
 tf.summary.scalar('loss', aver_loss_op)
 summary_op = tf.summary.merge_all()
-train_writer = tf.summary.FileWriter('./train%d' % exp_id, sess.graph)
+train_writer = tf.summary.FileWriter('./train%d' % args.exp_id, sess.graph)
 
 
 utils.count_params()
