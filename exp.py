@@ -75,21 +75,19 @@ python main_multi_gpus.py --exp_id 24 --dataset 'CamVid' --model 'FC-DenseNet56'
 
 /home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_soft_cost.py --exp_id 25 --dataset './data/mass_buildings/patches256-2' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --brightness 0.5 --num_epochs 50 --gpu 1
 
-nohup /home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_multi_gpus.py --exp_id 24 --dataset './data/mass_buildings/patches256-2' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --brightness 0.5 --num_epochs 50 --gpu_ids 0,1 --batch_size 2 > log_#25
+nohup /home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_multi_gpus.py --exp_id 24 --dataset './data/mass_buildings/patches256-2' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --num_val_images 100 --h_flip 1 --v_flip 1 --brightness 0.5 --num_epochs 50 --gpu_ids 0,1 --batch_size 2 > log_#25
+not set num_val_images yeat!!!
 
+#25 006
+006: CUDA_VISIBLE_DEVICES=1 nohup /home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_soft_cost.py --continue_training 1 --exp_id 25 --dataset './data/AerialImageDataset/patches256' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --brightness 0.5 --num_epochs 50 --num_val_images 100  --gpu_ids 1 > log_#25.txt
 
-#25 008
-nohup /home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_soft_cost.py --continue_training 1 --exp_id 25 --dataset './data/AerialImageDataset/patches256' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --num_epochs 50 --gpu 2
+#26 008
+008: CUDA_VISIBLE_DEVICES=0,3 nohup /home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_multi_gpus.py --continue_training 1 --exp_id 26 --dataset './data/AerialImageDataset/patches256' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --brightness 0.5 --num_epochs 50 --num_val_images 100 --gpu_ids 0,3 --batch_size 2 > log_#26.txt
 
-nohup /home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_multi_gpus.py --continue_training 1 --exp_id 25 --dataset './data/AerialImageDataset/patches256' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --num_epochs 50 --gpu_ids 2,3,4 --batch_size 3
-
-
-/home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_soft_cost.py --exp_id 26 --dataset './data/AerialImageDataset/patches256' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --num_epochs 50 --gpu 1
-
-/home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_multi_gpus.py --exp_id 27 --dataset './data/AerialImageDataset/patches256' --model 'FC-DenseNet56' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1 --num_epochs 50 --gpu_ids 3,4 --batch_size 2
 
 #
 # 融合HF-FCN和DenseNet,将HF-FCN中的融合层加到DenseNet的Decoder中
 # 使用ImageNet与训练DenseNet
 # DenseNet中的BC层,transction down
 
+CUDA_VISIBLE_DEVICES=0,3 /home/mmvc/anaconda2/envs/Xiang_Li/bin/python main_multi_gpus.py --continue_training 1 --exp_id 26 --dataset './data/mass_buildings/patches256-2' --model 'FC-DenseNet158' --is_BC 1 --is_edge_weight 1 --crop_height 256 --crop_width 256 --h_flip 1 --v_flip 1  --brightness 0.5 --num_epochs 50 --num_val_images 100 --gpu_ids 0,3 --batch_size 2
