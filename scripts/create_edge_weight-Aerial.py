@@ -16,14 +16,14 @@ print args
 def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
                    sat_data_dir, map_data_dir,
                    sat_out_dir, map_out_dir, map_weihgt_dir):
-    if os.path.exists(sat_out_dir):
-        shutil.rmtree(sat_out_dir)
-    if os.path.exists(map_out_dir):
-        shutil.rmtree(map_out_dir)
-    if os.path.exists(map_weihgt_dir):
-        shutil.rmtree(map_weihgt_dir)
-    os.makedirs(sat_out_dir)
-    os.makedirs(map_out_dir)
+#    if os.path.exists(sat_out_dir):
+#        shutil.rmtree(sat_out_dir)
+#    if os.path.exists(map_out_dir):
+#        shutil.rmtree(map_out_dir)
+#    if os.path.exists(map_weihgt_dir):
+#        shutil.rmtree(map_weihgt_dir)
+#    os.makedirs(sat_out_dir)
+#    os.makedirs(map_out_dir)
     os.makedirs(map_weihgt_dir)
 
     # patch size
@@ -76,8 +76,8 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
                 #    continue
 
                 #print sat_out_dir+os.path.basename(sat_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', sat_patch.shape
-                cv.imwrite(sat_out_dir+os.path.basename(sat_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', sat_patch)
-                cv.imwrite(map_out_dir+os.path.basename(map_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', map_patch)
+#                cv.imwrite(sat_out_dir+os.path.basename(sat_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', sat_patch)
+#                cv.imwrite(map_out_dir+os.path.basename(map_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', map_patch)
                 cv.imwrite(map_weihgt_dir+os.path.basename(map_fn).split('.')[0]+'_'+str(y)+'_'+str(x)+'.png', pw_patch)
                 n_patches += 1
 

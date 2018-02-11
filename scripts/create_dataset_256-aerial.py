@@ -75,8 +75,8 @@ def create_patches(sat_patch_size, map_patch_size, stride, map_ch,
 
 if __name__ == '__main__':
     create_patches(256, 256, 256, 1,
-                     args.dataset+'/AerialImageDataset/val/images',
-                     args.dataset+'/AerialImageDataset/val/gt',
+                     args.dataset+'/AerialImageDataset/valid/images',
+                     args.dataset+'/AerialImageDataset/valid/gt',
                      args.dataset+'/AerialImageDataset/patches256/val/',
                      args.dataset+'/AerialImageDataset/patches256/val_labels/')
     create_patches(256, 256, 256, 1,
