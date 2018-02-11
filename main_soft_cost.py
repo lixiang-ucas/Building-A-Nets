@@ -16,7 +16,7 @@ import utils
 
 import matplotlib.pyplot as plt
 os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DEVICES']='1'
+# os.environ['CUDA_VISIBLE_DEVICES']='1'
 
 sys.path.append("models")
 from FC_DenseNet_Tiramisu import build_fc_densenet
@@ -185,6 +185,10 @@ sess.run(tf.global_variables_initializer())
 ##################
 #summary
 ##################
+# # Add histograms for gradients.
+# for grad, var in tower_grads:
+#     if grad is not None:
+#         summaries.append(tf.summary.histogram(var.op.name + '/gradients', grad))
 # Add histograms for trainable variables.
 for var in tf.trainable_variables():
     summaries.append(tf.summary.histogram(var.op.name, var))
@@ -327,7 +331,7 @@ if args.is_training:
                 _,current=sess.run([opt,loss],feed_dict={input:input_image_batch,weight:pixel_weight_batch, output:output_image_batch})
             else:
                 _,current=sess.run([opt,loss],feed_dict={input:input_image_batch, output:output_image_batch})
-            if it % 10 == 0:
+            if it % 10000 == 0:
                 if args.is_edge_weight:
                     summary_str = sess.run(summary_op,feed_dict={input:input_image_batch,weight:pixel_weight_batch, output:output_image_batch})
                 else:
