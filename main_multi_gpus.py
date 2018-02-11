@@ -17,7 +17,7 @@ import utils
 import matplotlib.pyplot as plt
 
 os.environ['CUDA_DEVICE_ORDER']='PCI_BUS_ID'
-os.environ['CUDA_VISIBLE_DEVICES']='3,4'
+# os.environ['CUDA_VISIBLE_DEVICES']='3,4'
 
 sys.path.append("models")
 from FC_DenseNet_Tiramisu import build_fc_densenet
@@ -200,7 +200,7 @@ for gpu_id in gpu_ids:
     gpu_id = int(gpu_id)
     with tf.device('/gpu:%d' % gpu_id):
         print('using tower:%d...'% gpu_id)
-        with tf.name_scope('tower_%d' % gpu_id):
+        with tf.name_scope('tower_%d' % gpu_id) as scope:
             with tf.variable_scope('gpu_variables', reuse=gpu_id>0):
                 input = tf.placeholder(tf.float32,shape=[None,None,None,3])
                 output = tf.placeholder(tf.float32,shape=[None,None,None,num_classes])
@@ -247,6 +247,8 @@ for gpu_id in gpu_ids:
                     models.append((input,output,weight,network,loss,grads))
                 else:
                     models.append((input,output,network,loss,grads))
+                # Retain the summaries from the final tower.
+                summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
 
 print('build model on gpu tower done.')
 print('reduce model on cpu...')
@@ -271,10 +273,10 @@ sess.run(tf.global_variables_initializer())
 ##################
 #summary
 ##################
-# Add histograms for gradients.
-for grad, var in tower_grads:
-    if grad is not None:
-        summaries.append(tf.summary.histogram(var.op.name + '/gradients', grad))
+# # Add histograms for gradients.
+# for grad, var in tower_grads:
+#     if grad is not None:
+#         summaries.append(tf.summary.histogram(var.op.name + '/gradients', grad))
 # Add histograms for trainable variables.
 for var in tf.trainable_variables():
     summaries.append(tf.summary.histogram(var.op.name, var))
