@@ -137,6 +137,7 @@ if __name__ == '__main__':
     times = 0
     for img_fname in glob.glob('%s/*.tif*' % img_dir):
         ortho = cv.imread(img_fname,-1)
+	ortho = cv2.cvtColor(ortho, cv2.COLOR_BGR2RGB) #very important
         ortho = ortho.astype('float32')
         ortho = ortho/255.0
         st = time.time()
