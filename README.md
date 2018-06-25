@@ -30,16 +30,16 @@ Test accuracy of different models on the Massachuttes dataset.
 |------------------------|:-------------------:|:---------------------:|:------:|
 | Mnih-CNN~\cite{mnih2013machine} | 92.71 |   76.61 | 8.7| 
 | Mnih-CNN+CRF~\cite{mnih2013machine} |  92.82 | 76.38 | 26.6
-|Saito-multi-MA~\cite{saito2016multiple} &   95.03 & 78.73 & 67.7|
-|Saito-multi-MACIS~\cite{saito2016multiple}  & 95.09 & 78.72 & 67.8|
-|HF-FCN~\cite{zuo2016hf} & 96.43 & 84.24 & 1.07|
-|Ours (56 layers) &  96.40 & 83.17 & \textbf{1.01}|
-|Ours (158 layers) & \textbf{96.78} &    \textbf{84.79} &    4.38|
+|Saito-multi-MA~\cite{saito2016multiple} |   95.03 | 78.73| 67.7|
+|Saito-multi-MACIS~\cite{saito2016multiple}  | 95.09 | 78.72 | 67.8|
+|HF-FCN~\cite{zuo2016hf} | 96.43 | 84.24 | 1.07|
+|Ours (56 layers) |  96.40 | 83.17 | \textbf{1.01}|
+|Ours (158 layers) | \textbf{96.78} |    \textbf{84.79} |    4.38|
 
 
 Validation accuracy of different network depths on Inria Aerial Image Labeling dataset.
 
-FC-DenseNet (56 layers) | 74.64 | 96.01|
+|FC-DenseNet (56 layers) | 74.64 | 96.01|
 |------------------------|:-------------------:|:---------------------:|:-------------:|
 |Ours (56 layers) | 74.75 | 96.01|
 | FC-DenseNet (103 layers) | 75.58 | 96.19 |
