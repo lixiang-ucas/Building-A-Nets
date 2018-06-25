@@ -5,7 +5,7 @@ This branch implements a building extraction on remote sensing images, combining
 
 ## Network structure
 
-![image](https://github.com/lixiang-ucas/Building-A-Nets/edit/dev1.1/began-V4.jpg)
+![image](https://github.com/lixiang-ucas/Building-A-Nets/images/began-V4.jpg)
 Overview of our segmentation architecture with the adversarial network. Left: The segmentation network takes an aerial image as input and produces a pixel-wise classification label map. Right: A label map, chosen from segmentation output or ground truth, is multiplied with their corresponding input aerial image to produce a masked image, and the adversarial network takes this masked image map as input and adopts an auto-encoder network to reconstruct it.
 
 
@@ -46,3 +46,5 @@ Validation accuracy of different network depths on Inria Aerial Image Labeling d
 | Ours (103 layers) | 76.31 | 96.32 |
 |FC-DenseNet (158 layers) | 77.11 | 96.45  |
 |Ours (158 layers) | \textbf{78.73}  | \textbf{96.71} |
+
+![image](https://github.com/lixiang-ucas/Building-A-Nets/images/examples.jpg)
