@@ -40,7 +40,7 @@ Test accuracy of different models on the Massachuttes dataset.
 Validation accuracy of different network depths on Inria Aerial Image Labeling dataset.
 
 |FC-DenseNet (56 layers) | 74.64 | 96.01|
-|------------------------|:-------------------:|:---------------------:|:-------------:|
+|------------------------|:-------------------:|:---------------------:|
 |Ours (56 layers) | 74.75 | 96.01|
 | FC-DenseNet (103 layers) | 75.58 | 96.19 |
 | Ours (103 layers) | 76.31 | 96.32 |
