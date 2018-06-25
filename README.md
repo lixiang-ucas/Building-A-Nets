@@ -33,8 +33,8 @@ Test accuracy of different models on the Massachuttes dataset.
 |Saito-multi-MA~\cite{saito2016multiple} |   95.03 | 78.73| 67.7|
 |Saito-multi-MACIS~\cite{saito2016multiple}  | 95.09 | 78.72 | 67.8|
 |HF-FCN~\cite{zuo2016hf} | 96.43 | 84.24 | 1.07|
-|Ours (56 layers) |  96.40 | 83.17 | \textbf{1.01}|
-|Ours (158 layers) | \textbf{96.78} |    \textbf{84.79} |    4.38|
+|Ours (56 layers) |  96.40 | 83.17 | **1.01**|
+|Ours (158 layers) | **96.78** |    **84.79** |    4.38|
 
 
 Validation accuracy of different network depths on Inria Aerial Image Labeling dataset.
@@ -45,6 +45,6 @@ Validation accuracy of different network depths on Inria Aerial Image Labeling d
 | FC-DenseNet (103 layers) | 75.58 | 96.19 |
 | Ours (103 layers) | 76.31 | 96.32 |
 |FC-DenseNet (158 layers) | 77.11 | 96.45  |
-|Ours (158 layers) | \textbf{78.73}  | \textbf{96.71} |
+|Ours (158 layers) | **78.73**  | **96.71** |
 
 ![image](https://github.com/lixiang-ucas/Building-A-Nets/blob/master/Images/examples.jpg)
