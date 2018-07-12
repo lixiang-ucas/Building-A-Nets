@@ -62,7 +62,7 @@ def TransitionUp(block_to_upsample, skip_connection, n_filters_keep, scope=None)
   """
   with tf.name_scope(scope) as sc:
     # Upsample
-    l = slim.conv2d_transpose(block_to_upsample, n_filters_keep, kernel_size=[3, 3], stride=[2, 2])
+    l = slim.conv2d_transpose(block_to_upsample, n_filters_keep, kernel_size=[3, 3], stride=[2, 2], activation_fn=None)
     # Concatenate with skip connection
     l = tf.concat([l, skip_connection], axis=-1)
     return l
@@ -177,4 +177,6 @@ def build_fc_densenet(inputs, preset_model='FC-DenseNet56', num_classes=12, n_fi
       #      Softmax      #
       #####################
       net = slim.conv2d(stack, num_classes, [1, 1], scope='logits')
-      return net
+      G = tf.nn.softmax(net)
+      G_var = tf.contrib.framework.get_variables(sc)
+      return net, G, G_var
